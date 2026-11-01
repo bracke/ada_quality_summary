@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bracke/ada_quality_summary/schemas/project.schema.json",
+  "title": "Project assessment report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "report_type": {
+      "const": "project"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/source"
+    },
+    "selection": {
+      "$ref": "common.schema.json#/$defs/selection"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "$ref": "common.schema.json#/$defs/project"
+        },
+        "assessment": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "run_id": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source_fingerprint": {
+                  "type": "string"
+                },
+                "policy_fingerprint": {
+                  "type": "string"
+                },
+                "toolchain_fingerprint": {
+                  "type": "string"
+                },
+                "started_at": {
+                  "$ref": "common.schema.json#/$defs/optional_timestamp"
+                },
+                "finished_at": {
+                  "$ref": "common.schema.json#/$defs/optional_timestamp"
+                },
+                "evidence_format": {
+                  "type": "string",
+                  "enum": [
+                    "lossless",
+                    "legacy"
+                  ]
+                },
+                "totals": {
+                  "$ref": "common.schema.json#/$defs/indicator_counts"
+                }
+              },
+              "required": [
+                "run_id",
+                "source_fingerprint",
+                "policy_fingerprint",
+                "toolchain_fingerprint",
+                "started_at",
+                "finished_at",
+                "evidence_format",
+                "totals"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "indicators": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/indicator_result"
+          },
+          "maxItems": 33
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/finding"
+          }
+        },
+        "regressions": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/regression"
+          }
+        },
+        "baseline": {
+          "$ref": "common.schema.json#/$defs/baseline"
+        }
+      },
+      "required": [
+        "project",
+        "assessment",
+        "indicators",
+        "findings",
+        "regressions",
+        "baseline"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_type",
+    "source",
+    "selection",
+    "data"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bracke/ada_quality_summary/schemas/summary.schema.json",
+  "title": "Portfolio overview report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "report_type": {
+      "const": "summary"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/source"
+    },
+    "selection": {
+      "$ref": "common.schema.json#/$defs/selection"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "totals": {
+          "$ref": "common.schema.json#/$defs/portfolio_totals"
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/project"
+          }
+        },
+        "common_violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "indicator_id": {
+                "$ref": "common.schema.json#/$defs/indicator_id"
+              },
+              "name": {
+                "type": "string"
+              },
+              "projects": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "indicator_id",
+              "name",
+              "projects"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "regression_summary": {
+          "type": "object",
+          "properties": {
+            "projects_with_regressions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "regressions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_kind": {
+              "$ref": "common.schema.json#/$defs/kind_counts"
+            }
+          },
+          "required": [
+            "projects_with_regressions",
+            "regressions",
+            "by_kind"
+          ],
+          "additionalProperties": false
+        },
+        "activity": {
+          "type": "object",
+          "properties": {
+            "newer_running": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "newer_unfinished": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "newer_running",
+            "newer_unfinished"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "totals",
+        "projects",
+        "common_violations",
+        "regression_summary",
+        "activity"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_type",
+    "source",
+    "selection",
+    "data"
+  ],
+  "additionalProperties": false
+}

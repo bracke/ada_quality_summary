@@ -1,0 +1,61 @@
+with "config/ada_quality_summary_config.gpr";
+with "ada_quality";
+with "project_tools";
+with "terminal_styles";
+with "messages";
+with "jsonlib";
+with "humanize";
+
+project Ada_Quality_Summary is
+   type Boolean_Text is ("false", "true");
+   Warnings_As_Errors : Boolean_Text := external ("ADA_QUALITY_SUMMARY_WARNINGS_AS_ERRORS", "false");
+   Warning_Switches := ();
+   case Warnings_As_Errors is
+      when "false" => null;
+      when "true"  => Warning_Switches := ("-gnatwe");
+   end case;
+   --  `alr build --validation` always treats warnings as errors.
+   case Ada_Quality_Summary_Config.Build_Profile is
+      when "validation" => Warning_Switches := ("-gnatwe");
+      when others => null;
+   end case;
+
+   --  Dependency project locations, used only to keep dependencies out of the generated API documentation.
+   Ada_Quality_Root     := external ("ADA_QUALITY_ALIRE_PREFIX", "../ada_quality");
+   Database_Root        := external ("DATABASE_ALIRE_PREFIX", "../database");
+   Cryptolib_Root       := external ("CRYPTOLIB_ALIRE_PREFIX", "../cryptolib");
+   Project_Tools_Root   := external ("PROJECT_TOOLS_ALIRE_PREFIX", "../project_tools");
+   Jsonlib_Root         := external ("JSONLIB_ALIRE_PREFIX", "../jsonlib");
+   Terminal_Styles_Root := external ("TERMINAL_STYLES_ALIRE_PREFIX", "../terminal_styles");
+   Messages_Root        := external ("MESSAGES_ALIRE_PREFIX", "../messages");
+   I18n_Root            := external ("I18N_ALIRE_PREFIX", "../i18n");
+   Regexp_Root          := external ("REGEXP_ALIRE_PREFIX", "../regexp");
+   Humanize_Root        := external ("HUMANIZE_ALIRE_PREFIX", "../humanize");
+
+   for Languages use ("Ada");
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use ("main.adb");
+   for Create_Missing_Dirs use "True";
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnatyM120", "-gnata", "-gnatwa", "-gnatVa") & Warning_Switches;
+   end Compiler;
+
+   package Binder is
+      for Switches ("Ada") use ("-Es");
+   end Binder;
+
+   package Builder is
+      for Executable ("main.adb") use "ada-quality-summary";
+   end Builder;
+   package Documentation is
+      for Excluded_Project_Files use
+        (Ada_Quality_Root & "/ada_quality.gpr", Database_Root & "/database.gpr", Cryptolib_Root & "/cryptolib.gpr",
+         Project_Tools_Root & "/project_tools.gpr", Jsonlib_Root & "/jsonlib.gpr",
+         Terminal_Styles_Root & "/terminal_styles.gpr", Messages_Root & "/messages.gpr", I18n_Root & "/i18n.gpr",
+         Regexp_Root & "/regexp.gpr", Humanize_Root & "/humanize.gpr");
+   end Documentation;
+end Ada_Quality_Summary;

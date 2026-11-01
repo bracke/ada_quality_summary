@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bracke/ada_quality_summary/schemas/indicator.schema.json",
+  "title": "Indicator detail report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "report_type": {
+      "const": "indicator"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/source"
+    },
+    "selection": {
+      "$ref": "common.schema.json#/$defs/selection"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "indicator": {
+          "$ref": "common.schema.json#/$defs/indicator_summary"
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "violation",
+                  "unknown",
+                  "not_applicable",
+                  "missing"
+                ]
+              },
+              "run_id": {
+                "$ref": "common.schema.json#/$defs/optional_id"
+              },
+              "result": {
+                "oneOf": [
+                  {
+                    "$ref": "common.schema.json#/$defs/indicator_result"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "project_id",
+              "name",
+              "path",
+              "state",
+              "run_id",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "projects": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "passed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "violated": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknown": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "not_applicable": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "projects",
+            "passed",
+            "violated",
+            "unknown",
+            "not_applicable",
+            "missing"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "indicator",
+        "projects",
+        "totals"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_type",
+    "source",
+    "selection",
+    "data"
+  ],
+  "additionalProperties": false
+}

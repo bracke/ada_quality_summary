@@ -1,0 +1,49 @@
+name = "ada_quality_summary_tests"
+description = "AUnit acceptance tests and test tools for ada_quality_summary"
+version = "0.1.0-dev"
+executables = ["ada_quality_summary_tests", "aqs_writer", "aqs_trap", "aqs_schema_check", "aqs_demo", "aqs_coverage", "check_all"]
+
+[[depends-on]]
+gnat_native = "=15.2.1"
+
+[[depends-on]]
+aunit = "^26.0.0"
+
+[[depends-on]]
+ada_quality_summary = "*"
+
+[[pins]]
+ada_quality_summary = { path = ".." }
+
+[[pins]]
+ada_quality = { path = "../../ada_quality" }
+
+[[pins]]
+project_tools = { path = "../../project_tools" }
+
+[[pins]]
+terminal_styles = { path = "../../terminal_styles" }
+
+[[pins]]
+messages = { path = "../../messages" }
+
+[[pins]]
+jsonlib = { path = "../../jsonlib" }
+
+[[pins]]
+humanize = { path = "../../humanize" }
+
+[[pins]]
+database = { path = "../../database" }
+
+[[pins]]
+cryptolib = { path = "../../cryptolib" }
+
+[[pins]]
+i18n = { path = "../../i18n" }
+
+[[pins]]
+regexp = { path = "../../regexp" }
+
+[build-profiles]
+"*" = "development"

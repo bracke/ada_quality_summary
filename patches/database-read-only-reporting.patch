@@ -1,0 +1,639 @@
+diff --git a/src/database-status.ads b/src/database-status.ads
+index 1de5d9a..1d7dba6 100644
+--- a/src/database-status.ads
++++ b/src/database-status.ads
+@@ -33,6 +33,7 @@ package Database.Status is
+    Read_Only_Transaction : constant Status_Code := Database.Read_Only_Transaction;
+    Transaction_Conflict : constant Status_Code := Database.Transaction_Conflict;
+    Lock_Error : constant Status_Code := Database.Lock_Error;
++   Recovery_Required : constant Status_Code := Database.Recovery_Required;
+    Serialization_Failure : constant Status_Code := Database.Serialization_Failure;
+    Snapshot_Too_Old : constant Status_Code := Database.Snapshot_Too_Old;
+    Version_Conflict : constant Status_Code := Database.Version_Conflict;
+diff --git a/src/database-storage-file_io.adb b/src/database-storage-file_io.adb
+index 152cde5..4145e91 100644
+--- a/src/database-storage-file_io.adb
++++ b/src/database-storage-file_io.adb
+@@ -22,6 +22,7 @@ package body Database.Storage.File_IO is
+    O_CREAT : constant Interfaces.C.int := 64;
+    O_DIRECTORY : constant Interfaces.C.int := 16#10000#;
+    Mode_RW : constant Interfaces.C.int := 8#666#;
++   LOCK_SH : constant Interfaces.C.int := 1;
+    LOCK_EX : constant Interfaces.C.int := 2;
+    LOCK_NB : constant Interfaces.C.int := 4;
+    LOCK_UN : constant Interfaces.C.int := 8;
+@@ -131,9 +132,11 @@ package body Database.Storage.File_IO is
+    function Acquire_Process_Lock
+      (F              : in out File_Handle;
+       Path           : Wide_Wide_String;
+-      Create_If_Need : Boolean) return Database.Status.Result is
+-      Flags : Interfaces.C.int := O_RDWR;
+-      FD    : Interfaces.C.int;
++      Create_If_Need : Boolean;
++      Shared         : Boolean := False) return Database.Status.Result is
++      Flags     : Interfaces.C.int := (if Shared then O_RDONLY else O_RDWR);
++      Operation : constant Interfaces.C.int := (if Shared then LOCK_SH else LOCK_EX);
++      FD        : Interfaces.C.int;
+    begin
+       if F.Lock_FD /= Invalid_Lock_FD then
+          return Database.Status.Failure
+@@ -150,7 +153,7 @@ package body Database.Storage.File_IO is
+            (Database.Status.IOError, "could not open database file for process lock");
+       end if;
+ 
+-      if C_Flock (FD, LOCK_EX + LOCK_NB) /= 0 then
++      if C_Flock (FD, Operation + LOCK_NB) /= 0 then
+          declare
+             Ignored : constant Interfaces.C.int := C_Close (FD);
+             pragma Unreferenced (Ignored);
+@@ -162,6 +165,7 @@ package body Database.Storage.File_IO is
+       end if;
+ 
+       F.Lock_FD := FD;
++      F.Read_Only := Shared;
+       return Database.Status.Success;
+    exception
+       when others =>
+@@ -178,11 +182,13 @@ package body Database.Storage.File_IO is
+             pragma Unreferenced (Unlock_Result, Close_Result);
+          begin
+             F.Lock_FD := Invalid_Lock_FD;
++            F.Read_Only := False;
+          end;
+       end if;
+    exception
+       when others =>
+          F.Lock_FD := Invalid_Lock_FD;
++         F.Read_Only := False;
+    end Release_Process_Lock;
+ 
+    function Natural_Image (Value : Natural) return Wide_Wide_String is
+@@ -693,6 +699,65 @@ package body Database.Storage.File_IO is
+          return Database.Status.Failure (Database.Status.IOError, "could not open database file");
+    end Open;
+ 
++   function Open_Read_Only
++     (F : in out File_Handle; Path : Wide_Wide_String) return Database.Status.Result is
++      P : Page;
++      R : Database.Status.Result;
++   begin
++      if F.Opened then
++         return Database.Status.Failure (Database.Status.Already_Open, "file already open");
++      end if;
++      R := Acquire_Process_Lock
++        (F, Path, Create_If_Need => False, Shared => True);
++      if not Database.Status.Is_Ok (R) then
++         return R;
++      end if;
++      Ada.Streams.Stream_IO.Open (F.File, In_File, Native (Path), Form => "shared=no");
++      F.Opened := True;
++      F.Name := To_Unbounded_Wide_Wide_String (Path);
++      R := Read_Page (F, 0, Header_Page, P);
++      if not Database.Status.Is_Ok (R) then
++         declare
++            Close_Result : constant Database.Status.Result := Close (F);
++            pragma Unreferenced (Close_Result);
++         begin
++            return R;
++         end;
++      end if;
++      declare
++         M : constant Byte_Array := Payload (P);
++      begin
++         if M'Length < 8
++           or else M (0) /= 16#44#
++           or else M (1) /= 16#41#
++           or else M (2) /= 16#54#
++           or else M (3) /= 16#41#
++         then
++            declare
++               Close_Result : constant Database.Status.Result := Close (F);
++               pragma Unreferenced (Close_Result);
++            begin
++               return Database.Status.Failure
++                 (Database.Status.Invalid_File, "invalid database file header");
++            end;
++         end if;
++      end;
++      return Database.Status.Success;
++   exception
++      when others =>
++         begin
++            if Ada.Streams.Stream_IO.Is_Open (F.File) then
++               Ada.Streams.Stream_IO.Close (F.File);
++            end if;
++         exception
++            when others => null;
++         end;
++         F.Opened := False;
++         Release_Process_Lock (F);
++         return Database.Status.Failure
++           (Database.Status.IOError, "could not open database file read-only");
++   end Open_Read_Only;
++
+    function Close (F : in out File_Handle) return Database.Status.Result is
+    begin
+       if F.Opened then
+@@ -712,6 +777,9 @@ package body Database.Storage.File_IO is
+       if not F.Opened then
+          return Database.Status.Failure (Database.Status.Not_Open, "file not open");
+       end if;
++      if F.Read_Only then
++         return Database.Status.Success;
++      end if;
+       if Database.Fault_Hooks.Should_Fail (Database.Fault_Hooks.Random_IO_Failure) then
+          return Database.Fault_Hooks.Injected_Failure (Database.Fault_Hooks.Random_IO_Failure);
+       end if;
+@@ -745,6 +813,10 @@ package body Database.Storage.File_IO is
+       if not F.Opened then
+          return Database.Status.Failure (Database.Status.Not_Open, "file not open");
+       end if;
++      if F.Read_Only then
++         return Database.Status.Failure
++           (Database.Status.Read_Only_Transaction, "truncate attempted on read-only file");
++      end if;
+       R := Flush (F);
+       if not Database.Status.Is_Ok (R) then
+          return R;
+@@ -940,6 +1012,10 @@ package body Database.Storage.File_IO is
+       if not F.Opened then
+          return Database.Status.Failure (Database.Status.Not_Open, "file not open");
+       end if;
++      if F.Read_Only then
++         return Database.Status.Failure
++           (Database.Status.Read_Only_Transaction, "write attempted on read-only file");
++      end if;
+       if Database.Fault_Hooks.Should_Fail (Database.Fault_Hooks.Random_IO_Failure) then
+          return Database.Fault_Hooks.Injected_Failure (Database.Fault_Hooks.Random_IO_Failure);
+       end if;
+diff --git a/src/database-storage-file_io.ads b/src/database-storage-file_io.ads
+index ec88ef8..3728050 100644
+--- a/src/database-storage-file_io.ads
++++ b/src/database-storage-file_io.ads
+@@ -19,6 +19,10 @@ package Database.Storage.File_IO is
+    --  @return Status result describing whether the operation succeeded.
+    function Open (F : in out File_Handle; Path : Wide_Wide_String) return Database.Status.Result;
+ 
++   --  Open an existing page file using O_RDONLY and a shared process lock.
++   function Open_Read_Only
++     (F : in out File_Handle; Path : Wide_Wide_String) return Database.Status.Result;
++
+    --  Create/open a page file whose ordinary page reads and writes are
+    --  authenticated encrypted page artifacts. The raw database file remains
+    --  a sparse compatibility carrier;
+diff --git a/src/database-transactions.adb b/src/database-transactions.adb
+index 5fedb0d..1701ebd 100644
+--- a/src/database-transactions.adb
++++ b/src/database-transactions.adb
+@@ -87,6 +87,12 @@ package body Database.Transactions is
+          Tx.Last := Database.Status.Failure (Database.Status.Not_Open, "database not open");
+          return;
+       end if;
++      if Mode_In = Read_Write and then Database.Is_Read_Only (DB) then
++         Tx.Last := Database.Status.Failure
++           (Database.Status.Read_Only_Transaction,
++            "write transaction requested on read-only database");
++         return;
++      end if;
+ 
+       if Blocking then
+          case Mode_In is
+diff --git a/src/database.adb b/src/database.adb
+index 2ddaf98..6dc1d45 100644
+--- a/src/database.adb
++++ b/src/database.adb
+@@ -217,6 +217,50 @@ package body Database is
+       end if;
+    end Open;
+ 
++   procedure Open_Read_Only (DB : out Handle; Path : Wide_Wide_String) is
++   begin
++      DB.Kind := Closed_Backend;
++      DB.Read_Only_Mode := True;
++      DB.Last := Database.Storage.File_IO.Open_Read_Only (DB.File, Path);
++      if Database.Status.Is_Ok (DB.Last) and then Database.WAL.Exists (Path) then
++         DB.Last := Database.Status.Failure
++           (Database.Status.Recovery_Required,
++            "database has a write-ahead log and requires recovery");
++      end if;
++      if Database.Status.Is_Ok (DB.Last) then
++         DB.Kind := Persistent_Backend;
++         Assign_Catalog_State_Key (DB);
++         Assign_Full_Text_State_Key (DB);
++         Database.Storage.Free_List.Initialize_From_File (DB.Page_Allocator, DB.File);
++         DB.Last := Database.Catalog.Load (DB);
++         if Database.Status.Is_Ok (DB.Last) then
++            Database.Transactions.Reserve_Ids_Through (DB.Max_Persisted_Tx);
++            DB.Last := Database.Full_Text.Load (DB, Path);
++         end if;
++         if Database.Status.Is_Ok (DB.Last) then
++            DB.Last := Database.Extensions.Load (Path);
++         end if;
++      end if;
++      if not Database.Status.Is_Ok (DB.Last) then
++         declare
++            Saved : constant Database.Status.Result := DB.Last;
++            R     : constant Database.Status.Result := Database.Storage.File_IO.Close (DB.File);
++            pragma Unreferenced (R);
++         begin
++            if DB.FT_State_Key /= 0 then
++               Database.Full_Text.Clear (DB.FT_State_Key);
++            end if;
++            if DB.Catalog_State_Key_Value /= 0 then
++               Database.Catalog.Drop_Database (DB.Catalog_State_Key_Value);
++               Database.Extensions.Drop_Database (DB.Catalog_State_Key_Value);
++            end if;
++            DB.Last := Saved;
++            DB.Kind := Closed_Backend;
++            DB.Read_Only_Mode := False;
++         end;
++      end if;
++   end Open_Read_Only;
++
+    procedure Open_Encrypted
+      (DB   : out Handle;
+       Path : Wide_Wide_String;
+@@ -277,19 +321,23 @@ package body Database is
+          return;
+       end if;
+       if DB.Kind = Persistent_Backend then
+-         DB.Last := Database.Catalog.Save (DB);
+-         if Database.Status.Is_Ok (DB.Last) then
+-            DB.Last := Database.Full_Text.Save
+-              (DB.FT_State_Key, Database.Storage.File_IO.Path (DB.File));
+-         end if;
+-         if Database.Status.Is_Ok (DB.Last) then
+-            DB.Last := Database.Extensions.Save (Database.Storage.File_IO.Path (DB.File));
+-         end if;
+-         if Database.Status.Is_Ok (DB.Last) then
+-            DB.Last := Database.Storage.File_IO.Flush (DB.File);
+-         end if;
+-         if Database.Status.Is_Ok (DB.Last) then
+-            DB.Last := Database.WAL.Delete (Database.Storage.File_IO.Path (DB.File));
++         if DB.Read_Only_Mode then
++            DB.Last := Database.Status.Success;
++         else
++            DB.Last := Database.Catalog.Save (DB);
++            if Database.Status.Is_Ok (DB.Last) then
++               DB.Last := Database.Full_Text.Save
++                 (DB.FT_State_Key, Database.Storage.File_IO.Path (DB.File));
++            end if;
++            if Database.Status.Is_Ok (DB.Last) then
++               DB.Last := Database.Extensions.Save (Database.Storage.File_IO.Path (DB.File));
++            end if;
++            if Database.Status.Is_Ok (DB.Last) then
++               DB.Last := Database.Storage.File_IO.Flush (DB.File);
++            end if;
++            if Database.Status.Is_Ok (DB.Last) then
++               DB.Last := Database.WAL.Delete (Database.Storage.File_IO.Path (DB.File));
++            end if;
+          end if;
+          declare
+             R : constant Database.Status.Result := Database.Storage.File_IO.Close (DB.File);
+@@ -321,11 +369,16 @@ package body Database is
+       end if;
+ 
+       DB.Kind := Closed_Backend;
++      DB.Read_Only_Mode := False;
+    end Close;
+    function Is_Open (DB : Handle) return Boolean is
+    begin
+       return DB.Kind /= Closed_Backend;
+    end Is_Open;
++   function Is_Read_Only (DB : Handle) return Boolean is
++   begin
++      return DB.Kind /= Closed_Backend and then DB.Read_Only_Mode;
++   end Is_Read_Only;
+    function Last_Operation_Succeeded (DB : Handle) return Boolean is
+    begin
+       return Database.Status.Is_Ok (DB.Last);
+diff --git a/src/database.ads b/src/database.ads
+index f2d5cef..3b04f51 100644
+--- a/src/database.ads
++++ b/src/database.ads
+@@ -18,7 +18,7 @@ package Database is
+       Serialization_Error, Corrupt_Index, Key_Not_Found, Duplicate_Key,
+       Unsupported_Key_Type, Invalid_Schema, Migration_Error,
+       Unsupported_Migration, Read_Only_Transaction, Transaction_Conflict,
+-      Lock_Error, Serialization_Failure, Snapshot_Too_Old, Version_Conflict,
++      Lock_Error, Recovery_Required, Serialization_Failure, Snapshot_Too_Old, Version_Conflict,
+       WAL_Corruption, Replay_Failure, Checkpoint_Failure, Invalid_LSN,
+       Full_Text_Index_Error, Invalid_Full_Text_Query, Unsupported_Tokenizer,
+       Unsupported_Normalization, Backup_Error, Restore_Error, Export_Error,
+@@ -117,6 +117,13 @@ package Database is
+    --  @param Path filesystem path of the database carrier file.
+    procedure Open (DB : out Handle; Path : Wide_Wide_String);
+ 
++   --  Open an existing persistent database without permitting recovery or
++   --  mutation.  The operation takes a shared process lock and fails with
++   --  Recovery_Required when a WAL is present.
++   --  @param DB database handle initialized by the operation.
++   --  @param Path filesystem path of the database carrier file.
++   procedure Open_Read_Only (DB : out Handle; Path : Wide_Wide_String);
++
+    --  Open an encrypted persistent database.
+    --  @param DB database handle initialized by the operation.
+    --  @param Path filesystem path of the database carrier file.
+@@ -135,6 +142,9 @@ package Database is
+    --  @return True when the handle is open.
+    function Is_Open (DB : Handle) return Boolean;
+ 
++   --  Return whether the handle was opened through Open_Read_Only.
++   function Is_Read_Only (DB : Handle) return Boolean;
++
+    --  Return whether the last root-level operation succeeded.
+    --  @param DB database handle queried by the operation.
+    --  @return True when the last operation succeeded.
+@@ -178,6 +188,7 @@ private
+       Name      : Unbounded_Wide_Wide_String := Null_Unbounded_Wide_Wide_String;
+       Lock_FD   : Interfaces.C.int := Interfaces.C.int'First;
+       Encrypted : Boolean := False;
++      Read_Only : Boolean := False;
+       Key       : Encryption_Key := (Valid => False, Id => 0, Data => (others => 0));
+    end record;
+ 
+@@ -204,5 +215,6 @@ private
+       Encryption_Format_Version : Natural := 1;
+       Encryption_Key_Id         : Key_Id := 0;
+       WAL_Encryption_Enabled    : Boolean := False;
++      Read_Only_Mode            : Boolean := False;
+    end record;
+ end Database;
+diff --git a/tests/src/concurrency_tests.adb b/tests/src/concurrency_tests.adb
+index 26f855e..35af5da 100644
+--- a/tests/src/concurrency_tests.adb
++++ b/tests/src/concurrency_tests.adb
+@@ -1,8 +1,11 @@
+ with AUnit.Assertions;
+ 
++with Ada.Calendar;
+ with Ada.Characters.Conversions;
+ with Ada.Directories;
+ with Ada.Strings.Wide_Wide_Unbounded;
++with Ada.Streams;
++with Ada.Streams.Stream_IO;
+ with Database;
+ with Database.Locking;
+ with Database.Predicates;
+@@ -14,6 +17,7 @@ with Database.Tables;
+ with Database.Transactions;
+ with Database.Types;
+ with Database.Values;
++with Database.WAL;
+ with GNAT.OS_Lib;
+ 
+ package body Concurrency_Tests is
+@@ -21,6 +25,10 @@ package body Concurrency_Tests is
+    use type Database.Status.Status_Code;
+    use type Database.Transactions.Transaction_Mode;
+    use type GNAT.OS_Lib.Process_Id;
++   use type Ada.Calendar.Time;
++   use type Ada.Directories.File_Size;
++   use type Ada.Streams.Stream_Element_Array;
++   use type Ada.Streams.Stream_Element_Offset;
+ 
+    overriding
+    function Name (T : Case_Type) return AUnit.Message_String is
+@@ -63,6 +71,35 @@ package body Concurrency_Tests is
+       when others => null;
+    end Remove_File_If_Present;
+ 
++   function File_Contents (Path : String) return Ada.Streams.Stream_Element_Array is
++      File : Ada.Streams.Stream_IO.File_Type;
++   begin
++      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
++      declare
++         Length : constant Ada.Streams.Stream_Element_Offset :=
++           Ada.Streams.Stream_Element_Offset (Ada.Streams.Stream_IO.Size (File));
++         Data   : Ada.Streams.Stream_Element_Array
++           (0 .. Length - Ada.Streams.Stream_Element_Offset'(1));
++         Last   : Ada.Streams.Stream_Element_Offset;
++      begin
++         if Data'Length > 0 then
++            Ada.Streams.Stream_IO.Read (File, Data, Last);
++            if Last /= Data'Last then
++               Ada.Streams.Stream_IO.Close (File);
++               raise Ada.Streams.Stream_IO.End_Error;
++            end if;
++         end if;
++         Ada.Streams.Stream_IO.Close (File);
++         return Data;
++      end;
++   exception
++      when others =>
++         if Ada.Streams.Stream_IO.Is_Open (File) then
++            Ada.Streams.Stream_IO.Close (File);
++         end if;
++         raise;
++   end File_Contents;
++
+    package Items is new
+      Database.Tables.Typed
+        (Item,
+@@ -357,6 +394,157 @@ package body Concurrency_Tests is
+          raise;
+    end Process_Lock_Blocks_Second_Process;
+ 
++   procedure Persistent_Read_Only_Contract
++     (T : in out AUnit.Test_Cases.Test_Case'Class)
++   is
++      pragma Unreferenced (T);
++      Path       : constant String := "read_only_contract.database";
++      FTS_Path   : constant String := Path & ".fts";
++      DB         : Database.Handle;
++      Read_Tx    : Database.Transactions.Transaction;
++      Write_Tx   : Database.Transactions.Transaction;
++      W          : Database.WAL.WAL_Handle;
++      R          : Database.Status.Result;
++      DB_Size    : Ada.Directories.File_Size;
++      FTS_Size   : Ada.Directories.File_Size;
++      DB_Time    : Ada.Calendar.Time;
++      FTS_Time   : Ada.Calendar.Time;
++   begin
++      Remove_File_If_Present (Path);
++      Remove_File_If_Present (FTS_Path);
++      Remove_File_If_Present (Path & ".wal");
++
++      Database.Create
++        (DB, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert (Database.Last_Operation_Succeeded (DB), "fixture create failed");
++      Database.Close (DB);
++      Assert (Database.Last_Operation_Succeeded (DB), "fixture close failed");
++      Assert (Ada.Directories.Exists (FTS_Path), "fixture full-text sidecar missing");
++
++      DB_Size := Ada.Directories.Size (Path);
++      FTS_Size := Ada.Directories.Size (FTS_Path);
++      DB_Time := Ada.Directories.Modification_Time (Path);
++      FTS_Time := Ada.Directories.Modification_Time (FTS_Path);
++
++      declare
++         DB_Bytes  : constant Ada.Streams.Stream_Element_Array := File_Contents (Path);
++         FTS_Bytes : constant Ada.Streams.Stream_Element_Array := File_Contents (FTS_Path);
++      begin
++         Database.Open_Read_Only
++           (DB, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++         Assert (Database.Last_Operation_Succeeded (DB), "read-only open failed");
++         Assert (Database.Is_Read_Only (DB), "handle not marked read-only");
++
++         Database.Transactions.Begin_Read (DB, Read_Tx);
++         Assert (Database.Transactions.Is_Active (Read_Tx), "read transaction inactive");
++         R := Database.Transactions.Commit (Read_Tx);
++         Assert (Database.Status.Is_Ok (R), "read transaction commit failed");
++
++         Database.Transactions.Begin_Write (DB, Write_Tx);
++         Assert (not Database.Transactions.Is_Active (Write_Tx), "write transaction was admitted");
++         Assert
++           (Database.Transactions.Result (Write_Tx).Code = Database.Status.Read_Only_Transaction,
++            "write transaction returned wrong status");
++
++         Database.Close (DB);
++         Assert (Database.Last_Operation_Succeeded (DB), "read-only close failed");
++         Assert (Ada.Directories.Size (Path) = DB_Size, "carrier size changed");
++         Assert (Ada.Directories.Size (FTS_Path) = FTS_Size, "full-text sidecar size changed");
++         Assert (Ada.Directories.Modification_Time (Path) = DB_Time, "carrier timestamp changed");
++         Assert
++           (Ada.Directories.Modification_Time (FTS_Path) = FTS_Time,
++            "full-text sidecar timestamp changed");
++         Assert (File_Contents (Path) = DB_Bytes, "carrier bytes changed");
++         Assert (File_Contents (FTS_Path) = FTS_Bytes, "full-text sidecar bytes changed");
++      end;
++
++      R := Database.WAL.Create
++        (W, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert (Database.Status.Is_Ok (R), "WAL fixture create failed");
++      R := Database.WAL.Close (W);
++      Assert (Database.Status.Is_Ok (R), "WAL fixture close failed");
++      Database.Open_Read_Only
++        (DB, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert
++        (Database.Last_Result (DB).Code = Database.Status.Recovery_Required,
++         "read-only open did not reject existing WAL");
++      Assert
++        (Database.WAL.Exists (Ada.Characters.Conversions.To_Wide_Wide_String (Path)),
++         "read-only open removed the WAL");
++
++      R := Database.WAL.Delete (Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert (Database.Status.Is_Ok (R), "WAL cleanup failed");
++      Remove_File_If_Present (Path);
++      Remove_File_If_Present (FTS_Path);
++   exception
++      when others =>
++         Remove_File_If_Present (Path & ".wal");
++         Remove_File_If_Present (Path);
++         Remove_File_If_Present (FTS_Path);
++         raise;
++   end Persistent_Read_Only_Contract;
++
++   procedure Process_Shared_Readers_Block_Writer
++     (T : in out AUnit.Test_Cases.Test_Case'Class)
++   is
++      pragma Unreferenced (T);
++      Path       : constant String := "shared_reader_test.database";
++      Ready_Path : constant String := "shared_reader_test.ready";
++      Fixture    : Database.Handle;
++      Reader     : Database.Handle;
++      Writer     : Database.Handle;
++      Args       : GNAT.OS_Lib.Argument_List (1 .. 3);
++      Pid        : GNAT.OS_Lib.Process_Id;
++      Done       : GNAT.OS_Lib.Process_Id;
++      Success    : Boolean := False;
++   begin
++      Remove_File_If_Present (Path);
++      Remove_File_If_Present (Path & ".fts");
++      Remove_File_If_Present (Ready_Path);
++      Database.Create
++        (Fixture, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert (Database.Last_Operation_Succeeded (Fixture), "fixture create failed");
++      Database.Close (Fixture);
++      Assert (Database.Last_Operation_Succeeded (Fixture), "fixture close failed");
++
++      Args (1) := new String'(Path);
++      Args (2) := new String'(Ready_Path);
++      Args (3) := new String'("read-only");
++      Pid := GNAT.OS_Lib.Non_Blocking_Spawn ("./bin/lock_holder", Args);
++      for Arg of Args loop
++         GNAT.OS_Lib.Free (Arg);
++      end loop;
++      Assert (Pid /= GNAT.OS_Lib.Invalid_Pid, "could not spawn read-only helper");
++      for I in 1 .. 50 loop
++         exit when Ada.Directories.Exists (Ready_Path);
++         delay 0.05;
++      end loop;
++      Assert (Ada.Directories.Exists (Ready_Path), "read-only helper did not become ready");
++
++      Database.Open_Read_Only
++        (Reader, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert (Database.Last_Operation_Succeeded (Reader), "second reader was rejected");
++      Database.Open
++        (Writer, Ada.Characters.Conversions.To_Wide_Wide_String (Path));
++      Assert
++        (Database.Last_Result (Writer).Code = Database.Status.Lock_Error,
++         "writer was admitted while shared readers held locks");
++      Database.Close (Reader);
++      Assert (Database.Last_Operation_Succeeded (Reader), "reader close failed");
++
++      GNAT.OS_Lib.Wait_Process (Done, Success);
++      Assert (Done = Pid, "unexpected process completed");
++      Assert (Success, "read-only helper failed");
++      Remove_File_If_Present (Ready_Path);
++      Remove_File_If_Present (Path);
++      Remove_File_If_Present (Path & ".fts");
++   exception
++      when others =>
++         Remove_File_If_Present (Ready_Path);
++         Remove_File_If_Present (Path);
++         Remove_File_If_Present (Path & ".fts");
++         raise;
++   end Process_Shared_Readers_Block_Writer;
+ 
+    --  Many readers admitted at once run Start concurrently; the transaction-id
+    --  allocator must be atomic or two of them get the same id.
+@@ -471,6 +659,14 @@ package body Concurrency_Tests is
+         (T,
+          Process_Lock_Blocks_Second_Process'Access,
+          "process lock blocks second process");
++      Register_Routine
++        (T,
++         Persistent_Read_Only_Contract'Access,
++         "persistent read-only handle never mutates and rejects recovery");
++      Register_Routine
++        (T,
++         Process_Shared_Readers_Block_Writer'Access,
++         "process shared readers coexist and block writer");
+       Register_Routine
+         (T,
+          Read_And_Write_Visibility'Access,
+diff --git a/tests/src/lock_holder.adb b/tests/src/lock_holder.adb
+index 22b39b7..9a374fe 100644
+--- a/tests/src/lock_holder.adb
++++ b/tests/src/lock_holder.adb
+@@ -8,15 +8,24 @@ procedure Lock_Holder is
+    DB : Database.Handle;
+    Ready : Ada.Text_IO.File_Type;
+ begin
+-   if Ada.Command_Line.Argument_Count /= 2 then
++   if Ada.Command_Line.Argument_Count not in 2 .. 3 then
+       Ada.Command_Line.Set_Exit_Status (2);
+       return;
+    end if;
+ 
+-   Database.Open
+-     (DB,
+-      Ada.Characters.Conversions.To_Wide_Wide_String
+-        (Ada.Command_Line.Argument (1)));
++   if Ada.Command_Line.Argument_Count = 3
++     and then Ada.Command_Line.Argument (3) = "read-only"
++   then
++      Database.Open_Read_Only
++        (DB,
++         Ada.Characters.Conversions.To_Wide_Wide_String
++           (Ada.Command_Line.Argument (1)));
++   else
++      Database.Open
++        (DB,
++         Ada.Characters.Conversions.To_Wide_Wide_String
++           (Ada.Command_Line.Argument (1)));
++   end if;
+    if not Database.Last_Operation_Succeeded (DB) then
+       Ada.Command_Line.Set_Exit_Status (3);
+       return;

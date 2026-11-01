@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bracke/ada_quality_summary/schemas/regressions.schema.json",
+  "title": "Regression report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "report_type": {
+      "const": "regressions"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/source"
+    },
+    "selection": {
+      "$ref": "common.schema.json#/$defs/selection"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "regressions": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/regression"
+          }
+        },
+        "projects_affected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_exclusions": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/baseline"
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "regressions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_kind": {
+              "$ref": "common.schema.json#/$defs/kind_counts"
+            }
+          },
+          "required": [
+            "regressions",
+            "by_kind"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "regressions",
+        "projects_affected",
+        "baseline_exclusions",
+        "totals"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_type",
+    "source",
+    "selection",
+    "data"
+  ],
+  "additionalProperties": false
+}

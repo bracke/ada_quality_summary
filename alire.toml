@@ -1,0 +1,75 @@
+name = "ada_quality_summary"
+description = "Read-only terminal and JSON reporting over Ada Quality assessments"
+version = "0.1.0"
+licenses = "MIT"
+authors = ["Bent Bracke"]
+maintainers = ["Bent Bracke <bent@bracke.dk>"]
+maintainers-logins = ["bracke"]
+website = "https://github.com/bracke/ada_quality_summary"
+long-description = "ada-quality-summary presents the persisted quality status of every project registered with Ada Quality: a portfolio overview, project and indicator reports, outstanding findings, regressions, and historical trends, as terminal tables or versioned JSON. It reads one coherent snapshot through the shared read-only reporting API and never runs measurements or modifies the assessment database."
+tags = ["quality", "reporting", "cli"]
+project-files = ["ada_quality_summary.gpr"]
+executables = ["ada-quality-summary"]
+
+[[depends-on]]
+gnat_native = "=15.2.1"
+
+[[depends-on]]
+ada_quality = "*"
+
+[[depends-on]]
+project_tools = "*"
+
+[[depends-on]]
+terminal_styles = "*"
+
+[[depends-on]]
+messages = "*"
+
+[[depends-on]]
+jsonlib = "*"
+
+[[depends-on]]
+humanize = "*"
+
+[build-profiles]
+"*" = "development"
+
+[[actions]]
+type = "test"
+command = ["sh", "-c", "cd tests && alr build && ./bin/ada_quality_summary_tests"]
+
+
+# Local development overrides. The path pins make `alr build` use the sibling
+# checkouts; they are dev-only and must NOT appear in the published manifest.
+# database, cryptolib, i18n, and regexp are transitive dependencies of ada_quality.
+
+[[pins]]
+ada_quality = { path = "../ada_quality" }
+
+[[pins]]
+project_tools = { path = "../project_tools" }
+
+[[pins]]
+terminal_styles = { path = "../terminal_styles" }
+
+[[pins]]
+messages = { path = "../messages" }
+
+[[pins]]
+jsonlib = { path = "../jsonlib" }
+
+[[pins]]
+humanize = { path = "../humanize" }
+
+[[pins]]
+database = { path = "../database" }
+
+[[pins]]
+cryptolib = { path = "../cryptolib" }
+
+[[pins]]
+i18n = { path = "../i18n" }
+
+[[pins]]
+regexp = { path = "../regexp" }
