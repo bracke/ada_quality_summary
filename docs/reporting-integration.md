@@ -6,9 +6,8 @@ Phase 0 discovery is complete and its gate is satisfied. The upstream changes li
 owning repositories and are tested there; [database-integration.md](database-integration.md) describes the resulting
 contract.
 
-- `../database`: the prepared read-only patch
-  ([`patches/database-read-only-reporting.patch`](../patches/database-read-only-reporting.patch)) is applied; all 237
-  database tests pass, including the read-only, shared-lock, and writer-exclusion cases.
+- `../database`: the read-only open mode is committed upstream as "Open an existing database read-only for
+  reporting"; all 237 database tests pass, including the read-only, shared-lock, and writer-exclusion cases.
 - `../ada_quality`: `Ada_Quality.Reporting`, the shared private codec `Ada_Quality.Persistence`, schema version 3
   (run timestamps and lossless result and finding payloads), `Ada_Quality.Indicators.Measurement_Unit`, and nine
   reporting AUnit cases; the existing suite still passes.
