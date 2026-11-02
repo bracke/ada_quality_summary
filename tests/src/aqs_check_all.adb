@@ -9,7 +9,7 @@ with Project_Tools.Processes;
 with Project_Tools.Release_Checks;
 with Aqs_Schema;
 
---  Release checker: required structure, toolchain, validation build, AUnit suite, coverage evidence, and schema
+--  Release checker: required structure, toolchain, validation build, GNATdoc, AUnit suite, coverage evidence, and schema
 --  self-consistency.
 --
 --  Usage: tests/bin/check_all [--skip-build]
@@ -99,6 +99,26 @@ begin
       Project_Tools.Release_Checks.Run
         ("test build", Project_Tools.Files.Join (Root, "tests"), Alr, [new String'("build")]);
    end if;
+   declare
+      Documentation : constant Project_Tools.Processes.Captured_Process :=
+        Project_Tools.Processes.Capture_Command
+          (Alr,
+           Project_Tools.Processes.Arguments
+             ([Project_Tools.Processes.Argument ("-C"), Project_Tools.Processes.Argument (Root),
+               Project_Tools.Processes.Argument ("exec"), Project_Tools.Processes.Argument ("--"),
+               Project_Tools.Processes.Argument ("gnatdoc"), Project_Tools.Processes.Argument ("-P"),
+               Project_Tools.Processes.Argument (Project_Tools.Files.Join (Root, "ada_quality_summary.gpr")),
+               Project_Tools.Processes.Argument ("--warnings"), Project_Tools.Processes.Argument ("-O"),
+               Project_Tools.Processes.Argument (Project_Tools.Files.Join (Root, "obj/gnatdoc"))]),
+           Err_To_Out => True);
+      Text : constant String := Ada.Strings.Unbounded.To_String (Documentation.Output);
+   begin
+      --  GNATdoc reports documentation warnings without failing, so any diagnostic output fails the gate.
+      if Documentation.Status /= 0 or else Ada.Strings.Fixed.Trim (Text, Ada.Strings.Both)'Length > 0 then
+         Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, Text);
+         Project_Tools.Release_Checks.Fail ("GNATdoc reported errors or warnings for the public API");
+      end if;
+   end;
    declare
       No_Arguments : GNAT.OS_Lib.Argument_List (1 .. 0);
    begin

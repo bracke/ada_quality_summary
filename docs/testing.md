@@ -3,7 +3,7 @@
 ```sh
 alr test                        # build tests/ and run the AUnit suite
 tests/bin/aqs_coverage          # instrumented suite and the 90% production line-coverage gate
-tests/bin/check_all             # release checks (from the repository root)
+tests/bin/check_all             # release checks incl. GNATdoc warnings (from the repository root)
 ```
 
 ## Fixtures
@@ -12,7 +12,9 @@ tests/bin/check_all             # release checks (from the repository root)
 `Storage.Publish`, `Start_Assessment`, `Interrupt_Assessment`, `Set_Enabled`, and `Remove_Project`. Synthetic
 assessments satisfy the 33-indicator publication invariants. Corruption (`Storage.Testing_Corrupt`) and schema changes
 (`Storage.Testing_Set_Schema_Version`) are applied only to disposable copies. Legacy schema-2 evidence is published
-with `Storage.Testing_Use_Legacy_Evidence`. Fixtures live under `tests/obj/fixtures` and are disposable.
+with `Storage.Testing_Use_Legacy_Evidence`. Fixtures live under `tests/obj/fixtures` and are disposable. No fixture
+databases are committed: `tests/fixtures/` holds only a note, because stored binary databases would drift from the
+persistence schema they are meant to exercise.
 
 `tests/bin/aqs_demo DIRECTORY` creates a demonstration database with passing, violating, incomplete, unassessed,
 disabled, and removed projects, compatible and incompatible histories, and running and interrupted runs.

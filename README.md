@@ -16,6 +16,10 @@ alr test                          # AUnit acceptance suite
 alr build --validation -- -f      # warnings-as-errors validation build
 ```
 
+The `[[pins]]` in `alire.toml` link every dependency to a sibling checkout (`../ada_quality`, `../database`, ...), so
+development and CI build exactly the checked-out sources. Alire 2 writes the resulting lockfile to `alire/alire.lock`
+inside the ignored `alire/` directory. It records only those links, not versions, so it is not committed.
+
 ## Usage
 
 ```text

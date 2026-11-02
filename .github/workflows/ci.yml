@@ -30,6 +30,12 @@ jobs:
         # transitive crates (then gprbuild fails with "<x>.gpr not found").
         shell: bash
         run: alr settings --global --set solver.timeout 600
+      - name: Install GNATdoc
+        # GNATdoc is a regular Alire crate, not a toolchain component; check_all runs it.
+        run: alr --non-interactive install gnatdoc
+      - name: Put Alire-installed tools on PATH
+        shell: bash
+        run: echo "$HOME/.alire/bin" >> "$GITHUB_PATH"
 
       - name: Build ada_quality_summary
         # Also generates the gitignored config/ada_quality_summary_config.gpr.
@@ -52,6 +58,6 @@ jobs:
           if-no-files-found: ignore
       - name: Run release checks
         # Required structure and schemas, toolchain, warnings-as-errors validation build,
-        # test build, the AUnit suite, and the coverage evidence.
+        # test build, GNATdoc without warnings, the AUnit suite, and the coverage evidence.
         working-directory: ada_quality_summary
         run: ./tests/bin/check_all
