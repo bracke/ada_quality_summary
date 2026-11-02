@@ -30,9 +30,18 @@ jobs:
         # transitive crates (then gprbuild fails with "<x>.gpr not found").
         shell: bash
         run: alr settings --global --set solver.timeout 600
+      - name: Restore GNATdoc
+        # Building GNATdoc from source takes about 30 minutes, so the Alire install prefix is cached.
+        id: gnatdoc
+        uses: actions/cache@v4
+        with:
+          path: ~/.alire
+          key: gnatdoc-25.2.0-${{ runner.os }}-gnat_native-15.2.1
       - name: Install GNATdoc
         # GNATdoc is a regular Alire crate, not a toolchain component; check_all runs it.
-        run: alr --non-interactive install gnatdoc
+        # Pinned to the version the release gate is verified with locally.
+        if: steps.gnatdoc.outputs.cache-hit != 'true'
+        run: alr --non-interactive install gnatdoc=25.2.0
       - name: Put Alire-installed tools on PATH
         shell: bash
         run: echo "$HOME/.alire/bin" >> "$GITHUB_PATH"
