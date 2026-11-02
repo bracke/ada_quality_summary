@@ -2,6 +2,7 @@ with Ada_Quality.Reporting;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Repository;
+with Ada_Quality_Summary.Rules;
 
 --  Deterministic, side-effect-free aggregation of a snapshot into report records.
 --
@@ -39,13 +40,9 @@ package Ada_Quality_Summary.Aggregation is
    --  @param Projects Selected project rows.
    --  @return Portfolio.
 
-   type Indicator_State is (Pass_State, Violation_State, Unknown_State, Not_Applicable_State, Missing_State);
-   --  One project's state for one indicator.
-   --  @enum Pass_State Requirement passes.
-   --  @enum Violation_State Requirement is violated.
-   --  @enum Unknown_State Compliance is unknown.
-   --  @enum Not_Applicable_State Requirement does not apply.
-   --  @enum Missing_State The project has no completed assessment.
+   type Indicator_State is new Ada_Quality_Summary.Rules.Result_State;
+   --  One project's state for one indicator. The literals and their meaning are those of
+   --  Ada_Quality_Summary.Rules.Result_State.
 
    function Image (State : Indicator_State) return String;
    --  Return the stable spelling.

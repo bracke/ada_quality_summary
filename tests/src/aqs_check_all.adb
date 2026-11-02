@@ -9,8 +9,8 @@ with Project_Tools.Processes;
 with Project_Tools.Release_Checks;
 with Aqs_Schema;
 
---  Release checker: required structure, toolchain, validation build, GNATdoc, AUnit suite, coverage evidence, and schema
---  self-consistency.
+--  Release checker: required structure, toolchain, validation build, GNATdoc, SPARK proof, staged pin-free release,
+--  AUnit suite, coverage evidence, and schema self-consistency.
 --
 --  Usage: tests/bin/check_all [--skip-build]
 procedure Aqs_Check_All is
@@ -24,7 +24,8 @@ procedure Aqs_Check_All is
       new String'("docs/reporting-semantics.md"), new String'("docs/database-integration.md"),
       new String'("docs/reporting-integration.md"), new String'("docs/json-contracts.md"),
       new String'("docs/testing.md"), new String'("tests/alire.toml"), new String'("tests/coverage.gpr"),
-      new String'("tests/ada_quality_summary_tests.gpr"), new String'("coverage/gcov-summary.txt")];
+      new String'("tests/ada_quality_summary_tests.gpr"), new String'("coverage/gcov-summary.txt"),
+      new String'("spark_rules.gpr")];
 
    Reports : constant Text_List :=
      [new String'("summary"), new String'("projects"), new String'("project"), new String'("indicators"),
@@ -118,6 +119,20 @@ begin
          Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, Text);
          Project_Tools.Release_Checks.Fail ("GNATdoc reported errors or warnings for the public API");
       end if;
+   end;
+   --  Any unproved check or GNATprove warning fails the proof of the classification and counting rules.
+   Project_Tools.Release_Checks.Run
+     ("SPARK rules proof", Root, Alr,
+      [new String'("exec"), new String'("--"), new String'("gnatprove"), new String'("-P"),
+       new String'("spark_rules.gpr"), new String'("--checks-as-errors=on"), new String'("--warnings=error"),
+       new String'("-j0")]);
+   declare
+      No_Arguments : GNAT.OS_Lib.Argument_List (1 .. 0);
+   begin
+      --  The published manifest is the root manifest without its development pins; the stage must validate and build.
+      Project_Tools.Release_Checks.Run
+        ("staged pin-free release", Root, Project_Tools.Files.Join (Root, "tests/bin/aqs_release_stage"),
+         No_Arguments);
    end;
    declare
       No_Arguments : GNAT.OS_Lib.Argument_List (1 .. 0);

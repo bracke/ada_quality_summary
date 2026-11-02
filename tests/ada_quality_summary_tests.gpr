@@ -7,7 +7,7 @@ project Ada_Quality_Summary_Tests is
    for Exec_Dir use "bin";
    for Main use
      ("ada_quality_summary_tests.adb", "aqs_writer.adb", "aqs_trap.adb", "aqs_schema_check.adb", "aqs_demo.adb",
-      "aqs_coverage.adb", "aqs_check_all.adb");
+      "aqs_coverage.adb", "aqs_check_all.adb", "aqs_release_stage.adb");
    for Create_Missing_Dirs use "True";
 
    package Compiler is

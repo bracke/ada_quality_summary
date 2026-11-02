@@ -25,9 +25,11 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | ---- | ----------------- |
 | `Ada_Quality_Summary` | `Version`, `Report_Format_Version`, `Argument_Error`, `Report_Error`, `Data_Error`. |
 | `.Options` | `Options`, `Command_Kind`, `Sort_Key`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`. |
+| `.Rules` | `Quality_State`, `Newer_State`, `Result_State`, `Indicator_Totals`, `Portfolio_Totals`. |
+| `.Rules.Counting` | `Total`, `Applicable`, `Sum`, `Tally`, `Classify`, `Priority`, `Classified`, `Consistent`, `Add_Classified`, `Add_Project` (SPARK, proved). |
 | `.Model` | `Project_Quality_State`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Finding_Summary`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Report_Metadata`, `Classify`, `Count_Indicators`. |
 | `.Repository` | `Repository`, `Snapshot`, `Open`, `Load`, indexed queries, `Assessment`. |
-| `.Filtering` | `Selection`, `Resolve_Project`, `Resolve_Indicator`, `Population`, sorting procedures, generic `Limit`. |
+| `.Filtering` | `Selection`, `Resolve_Project`, `Resolve_Indicator`, `Population`, sorting procedures. |
 | `.Aggregation` | `Build_Project`, `Build_Projects`, `Build_Totals`, `Build_Portfolio`, `Build_Indicator`, `Build_Indicators`, `Build_Findings`, `State_Of`. |
 | `.Trends` | `Regressions`, `History`, `Metric_Series`, `Daily_States`, `Baseline_Info`. |
 | `.Reports` | `Report`, `Build`. |

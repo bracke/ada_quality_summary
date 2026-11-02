@@ -263,7 +263,7 @@ package body Ada_Quality_Summary.Reports is
                if Ada_Quality.Indicators.Measurement_Unit (Id) /= "none" then
                   declare
                      Series : Trend_Summary :=
-                       Trends.Metric_Series (Data, Selected, Id, Invocation.Since, Invocation.Until_Date, Item.Undated);
+                       Trends.Metric_Series (Data, Selected, Id, Invocation.Since, Invocation.Until_Date);
                   begin
                      Filtering.Sort_Points (Series.Points, Invocation.Sort, Invocation.Reverse_Order);
                      Limit_Points (Series.Points, Invocation.Limit);
@@ -271,6 +271,7 @@ package body Ada_Quality_Summary.Reports is
                   end;
                end if;
             end loop;
+            Item.Undated := Trends.Undated_Runs (Data, Selected, Invocation.Since, Invocation.Until_Date);
             Item.Daily := Trends.Daily_States (Data, Selected, Invocation.Since, Invocation.Until_Date);
 
          when History_Command =>

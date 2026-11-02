@@ -36,7 +36,9 @@ computation error never leaves partial JSON on standard output.
 | `Ada_Quality_Summary` | Version constants and the three typed error categories. |
 | `.Options` | Strict command-line parsing and validation. |
 | `.Text` | User-visible message catalog rendered through `messages`. |
-| `.Model` | Report records, classification, and indicator counting. |
+| `.Rules` | Counting types: classification, newer-run and result states, indicator and portfolio totals. |
+| `.Rules.Counting` | SPARK-proved classification, tallying, and portfolio-total rules. |
+| `.Model` | Report records derived from `.Rules`; classification and indicator counting of decoded results. |
 | `.Repository` | Snapshot loading with bounded busy wait; project, run, and assessment indexes. |
 | `.Filtering` | Exact project and indicator resolution, population filters, deterministic sorting, row limits. |
 | `.Aggregation` | Project rows, portfolio totals, indicator matrix, finding collection. |
@@ -45,6 +47,21 @@ computation error never leaves partial JSON on standard output.
 | `.Terminal` | Width-aware terminal rendering, display-cell measurement, color policy. |
 | `.JSON` | Versioned JSON envelope and report-specific data objects. |
 | `.CLI` | Orchestration, database-path precedence, help, exit codes. |
+
+## Proved rules
+
+`Ada_Quality_Summary.Rules.Counting` holds the classification and counting rules every report depends on, written in
+SPARK and proved by `alr exec -- gnatprove -P spark_rules.gpr --checks-as-errors=on`. The proof shows the absence of
+run-time errors and these properties:
+
+- a completed assessment is never classified as unassessed, and unknown compliance takes precedence over violation;
+- each tally adds exactly one to the field of the counted state and to the counted population;
+- portfolio totals always partition the projects into the four classifications and into enabled and disabled
+  projects, and projects with newer runs or regressions never outnumber the projects counted.
+
+`Model`, `Aggregation`, and `Trends` derive their count types from `Ada_Quality_Summary.Rules` and update every count
+through these operations, so the proved properties hold for the totals that the reports render. Units that read the
+database, build containers, or render output stay outside SPARK.
 
 ## Determinism
 

@@ -14,11 +14,17 @@ alr exec -- gnatls --version      # GNAT 15.2.1
 alr build                         # bin/ada-quality-summary
 alr test                          # AUnit acceptance suite
 alr build --validation -- -f      # warnings-as-errors validation build
+alr exec -- gnatprove -P spark_rules.gpr --checks-as-errors=on   # SPARK proof of the counting rules
 ```
 
 The `[[pins]]` in `alire.toml` link every dependency to a sibling checkout (`../ada_quality`, `../database`, ...), so
 development and CI build exactly the checked-out sources. Alire 2 writes the resulting lockfile to `alire/alire.lock`
 inside the ignored `alire/` directory. It records only those links, not versions, so it is not committed.
+
+The pins are for development only and are not part of a release. `tests/bin/aqs_release_stage` stages the release under
+`obj/release-stage` with every `[[pins]]` table removed, validates the staged manifest and sources with
+`project_tools`, and builds the stage through a temporary overlay that pins the same siblings by absolute path.
+`obj/release-stage/alire.toml` is the manifest to publish; `tests/bin/check_all` runs this check.
 
 ## Usage
 

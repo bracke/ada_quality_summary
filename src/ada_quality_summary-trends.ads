@@ -90,16 +90,27 @@ package Ada_Quality_Summary.Trends is
      (Data       : Ada_Quality_Summary.Repository.Snapshot;
       Projects   : Ada_Quality_Summary.Model.Project_Vectors.Vector;
       Indicator  : Ada_Quality.Types.Indicator_Id;
-      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound;
-      Undated    : in out Natural) return Ada_Quality_Summary.Model.Trend_Summary;
+      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound) return Ada_Quality_Summary.Model.Trend_Summary;
    --  Build one numeric series from Ada_Quality.History.Metric_Trend, per project, against its current assessment.
+   --  The series kind is the indicator's measurement kind, also when no observation is included; observations of
+   --  another kind are excluded and counted.
    --  @param Data Snapshot.
    --  @param Projects Selected projects.
    --  @param Indicator Numeric indicator.
    --  @param Since Earliest included instant.
    --  @param Until_Date Exclusive latest instant.
-   --  @param Undated Incremented for observations without a timestamp excluded by a date filter.
    --  @return Series.
+
+   function Undated_Runs
+     (Data : Ada_Quality_Summary.Repository.Snapshot;
+      Projects : Ada_Quality_Summary.Model.Project_Vectors.Vector;
+      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound) return Natural;
+   --  Count the completed runs a date filter excludes because they have no persisted timestamp.
+   --  @param Data Snapshot.
+   --  @param Projects Selected projects.
+   --  @param Since Earliest included instant.
+   --  @param Until_Date Exclusive latest instant.
+   --  @return Undated completed runs of Projects, or zero without a date filter.
 
    type State_Snapshot is record
       Day        : Ada_Quality_Summary.Model.UString;
@@ -118,9 +129,13 @@ package Ada_Quality_Summary.Trends is
       Projects : Ada_Quality_Summary.Model.Project_Vectors.Vector;
       Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound) return State_Snapshot_Vectors.Vector;
    --  Classify the population at the end of each UTC day on which a dated completed assessment finished.
+   --
+   --  Each project counts with its latest completed assessment at or before the end of the day. Legacy runs without
+   --  a timestamp were completed before the schema migration that started recording timestamps, and every snapshot
+   --  day is the day a dated run finished, so a legacy run precedes every snapshot day; no date is inferred for it.
    --  @param Data Snapshot.
    --  @param Projects Selected projects.
    --  @param Since Earliest included instant.
    --  @param Until_Date Exclusive latest instant.
-   --  @return Snapshots; projects without a dated completed assessment by that day count as unassessed.
+   --  @return Snapshots; projects without a completed assessment by that day count as unassessed.
 end Ada_Quality_Summary.Trends;

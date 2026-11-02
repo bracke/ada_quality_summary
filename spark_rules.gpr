@@ -1,0 +1,19 @@
+--  GNATprove project for the proved reporting rules; tests/bin/check_all runs it with --checks-as-errors=on.
+project Spark_Rules is
+   for Source_Dirs use ("src");
+   for Source_Files use
+     ("ada_quality_summary.ads",
+      "ada_quality_summary-rules.ads",
+      "ada_quality_summary-rules-counting.ads",
+      "ada_quality_summary-rules-counting.adb");
+   for Object_Dir use "obj/spark_rules";
+   for Main use ();
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2");
+   end Prove;
+end Spark_Rules;

@@ -5,6 +5,7 @@ with Ada_Quality.History;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
+with Ada_Quality_Summary.Rules.Counting;
 
 package body Ada_Quality_Summary.Trends is
    use Ada.Strings.Unbounded;
@@ -170,13 +171,14 @@ package body Ada_Quality_Summary.Trends is
      (Data       : Repository.Snapshot;
       Projects   : Project_Vectors.Vector;
       Indicator  : Indicator_Id;
-      Since, Until_Date : Options.Date_Bound;
-      Undated    : in out Natural) return Trend_Summary
+      Since, Until_Date : Options.Date_Bound) return Trend_Summary
    is
-      Result     : Trend_Summary :=
-        (Indicator => Indicator, Kind => Integer_Value,
-         Unit => To_Unbounded_String (Ada_Quality.Indicators.Measurement_Unit (Indicator)), others => <>);
-      Kind_Known : Boolean := False;
+      Unit   : constant String := Ada_Quality.Indicators.Measurement_Unit (Indicator);
+      --  Ada_Quality.Types defines Decimal_Value as the fixed basis-point kind; every other numeric unit is an
+      --  integer count.
+      Result : Trend_Summary :=
+        (Indicator => Indicator, Kind => (if Unit = "basis_points" then Decimal_Value else Integer_Value),
+         Unit => To_Unbounded_String (Unit), others => <>);
    begin
       for Project of Projects loop
          declare
@@ -196,9 +198,7 @@ package body Ada_Quality_Summary.Trends is
                declare
                   Run : constant Ada_Quality.Reporting.Run_Record := Repository.Run (Data, Item.Id);
                begin
-                  if Filtered (Since, Until_Date) and then not Run.Finished_At.Present then
-                     Undated := Undated + 1;
-                  elsif In_Range (Run.Finished_At, Since, Until_Date) then
+                  if In_Range (Run.Finished_At, Since, Until_Date) then
                      Eligible := Eligible + 1;
                   end if;
                end;
@@ -209,20 +209,12 @@ package body Ada_Quality_Summary.Trends is
                   Value : constant Measurement_Value :=
                     Repository.Assessment (Data, Point.Run_Id).Results (Indicator_Id'Pos (Indicator) + 1).Measurement;
                begin
-                  if In_Range (Run.Finished_At, Since, Until_Date) and then
-                    Value.Kind in Integer_Value | Decimal_Value
-                  then
-                     if not Kind_Known then
-                        Result.Kind := Value.Kind;
-                        Kind_Known := True;
-                     end if;
-                     --  Never combine measurement representations within one series.
-                     if Value.Kind = Result.Kind then
-                        Result.Points.Append
-                          (Trend_Point'(Project_Id => Project.Project_Id, Run_Id => Point.Run_Id, Value => Point.Value,
-                            Observed => Run.Finished_At));
-                        Included := Included + 1;
-                     end if;
+                  --  Never combine measurement representations within one series.
+                  if In_Range (Run.Finished_At, Since, Until_Date) and then Value.Kind = Result.Kind then
+                     Result.Points.Append
+                       (Trend_Point'(Project_Id => Project.Project_Id, Run_Id => Point.Run_Id, Value => Point.Value,
+                         Observed => Run.Finished_At));
+                     Included := Included + 1;
                   end if;
                end;
             end loop;
@@ -236,6 +228,24 @@ package body Ada_Quality_Summary.Trends is
       end loop;
       return Result;
    end Metric_Series;
+
+   function Undated_Runs
+     (Data : Repository.Snapshot; Projects : Project_Vectors.Vector; Since, Until_Date : Options.Date_Bound)
+      return Natural
+   is
+      Count : Natural := 0;
+   begin
+      if Filtered (Since, Until_Date) then
+         for Project of Projects loop
+            for Run of Repository.Runs (Data, Project.Project_Id) loop
+               if Run.State = Assessment_Completed and then not Run.Finished_At.Present then
+                  Count := Count + 1;
+               end if;
+            end loop;
+         end loop;
+      end if;
+      return Count;
+   end Undated_Runs;
 
    function Day_Of (Time : Ada.Calendar.Time) return String is
       Image : constant String := Ada_Quality.Reporting.Image ((Present => True, Value => Time));
@@ -272,28 +282,23 @@ package body Ada_Quality_Summary.Trends is
                   Selected : Natural := 0;
                begin
                   for Run of Repository.Runs (Data, Project.Project_Id) loop
-                     if Run.State = Assessment_Completed and then Run.Finished_At.Present and then
-                       Run.Finished_At.Value < Day_End
+                     --  Legacy runs predate every snapshot day; see Daily_States in the package specification.
+                     if Run.State = Assessment_Completed and then
+                       (not Run.Finished_At.Present or else Run.Finished_At.Value < Day_End)
                      then
                         Selected := Run.Id;
                      end if;
                   end loop;
-                  Totals.Projects := Totals.Projects + 1;
                   if Selected = 0 then
-                     Totals.Unassessed := Totals.Unassessed + 1;
+                     Rules.Counting.Add_Classified (Rules.Portfolio_Totals (Totals), Rules.Unassessed, 0, 0);
                   else
                      declare
-                        Results : constant Result_Vectors.Vector := Repository.Assessment (Data, Selected).Results;
-                        Counts  : constant Indicator_Totals := Count_Indicators (Results);
+                        Counts : constant Indicator_Totals :=
+                          Count_Indicators (Repository.Assessment (Data, Selected).Results);
                      begin
-                        case Classify (Results) is
-                           when Passing => Totals.Passing := Totals.Passing + 1;
-                           when Violations => Totals.Violations := Totals.Violations + 1;
-                           when Incomplete => Totals.Incomplete := Totals.Incomplete + 1;
-                           when Unassessed => Totals.Unassessed := Totals.Unassessed + 1;
-                        end case;
-                        Totals.Indicator_Violations := Totals.Indicator_Violations + Counts.Violated;
-                        Totals.Unknown_Results := Totals.Unknown_Results + Counts.Unknown_Count;
+                        Rules.Counting.Add_Classified
+                          (Rules.Portfolio_Totals (Totals), Rules.Counting.Classify (Rules.Indicator_Totals (Counts)),
+                           Violated => Counts.Violated, Unknown => Counts.Unknown_Count);
                      end;
                   end if;
                end;

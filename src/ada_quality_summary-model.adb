@@ -40,36 +40,24 @@ package body Ada_Quality_Summary.Model is
          when History_Report => "history");
 
    function Classify (Results : Result_Vectors.Vector) return Project_Quality_State is
-      Has_Violation : Boolean := False;
-   begin
-      for Result of Results loop
-         case Result.Compliance is
-            when Unknown => return Incomplete;
-            when Violation => Has_Violation := True;
-            when Pass | Compliance_Status'(Not_Applicable) => null;
-         end case;
-      end loop;
-      return (if Has_Violation then Violations else Passing);
-   end Classify;
+     (Project_Quality_State
+        (Rules.Counting.Classify (Rules.Indicator_Totals (Count_Indicators (Results)))));
 
    function Count_Indicators (Results : Result_Vectors.Vector) return Indicator_Totals is
       Totals : Indicator_Totals;
    begin
       for Result of Results loop
-         case Result.Compliance is
-            when Pass => Totals.Passed := Totals.Passed + 1;
-            when Violation => Totals.Violated := Totals.Violated + 1;
-            when Unknown => Totals.Unknown_Count := Totals.Unknown_Count + 1;
-            when Compliance_Status'(Not_Applicable) => Totals.Not_Applicable := Totals.Not_Applicable + 1;
-         end case;
+         Rules.Counting.Tally
+           (Rules.Indicator_Totals (Totals),
+            (case Result.Compliance is
+                when Pass => Rules.Pass_State,
+                when Violation => Rules.Violation_State,
+                when Unknown => Rules.Unknown_State,
+                when Compliance_Status'(Not_Applicable) => Rules.Not_Applicable_State));
       end loop;
       return Totals;
    end Count_Indicators;
 
    function Quality_Priority (State : Project_Quality_State) return Positive is
-     (case State is
-         when Incomplete => 1,
-         when Violations => 2,
-         when Unassessed => 3,
-         when Passing => 4);
+     (Rules.Counting.Priority (Rules.Quality_State (State)));
 end Ada_Quality_Summary.Model;

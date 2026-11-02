@@ -56,13 +56,19 @@ counted as excluded observations.
 
 Daily snapshots classify the population at the end of each UTC day on which a dated completed assessment finished,
 using the latest completed assessment finished by then. This is a last-known-state view, not a claim that every
-project was reassessed on that day.
+project was reassessed on that day. A legacy assessment without a timestamp was completed before the schema migration
+that started recording timestamps, and every snapshot day is the day of a dated run, so a legacy assessment counts as
+finished before every snapshot day; it keeps its project assessed without being given a date.
 
 ## Timestamps and date filters
 
 Schema 3 persists UTC `started_at` and `finished_at` for every run. Runs created under earlier schemas have no
 timestamp; reports show `null` and never infer a date from a run ID. With `--since` or `--until`, undated runs and
-observations are excluded and their number is reported as `undated_excluded`.
+observations are excluded and their number is reported as `undated_excluded`. In `trends` this counts undated
+completed runs once each, not once per numeric series.
+
+A numeric series always reports its indicator's measurement kind, `decimal` for basis points and `integer` otherwise,
+also when no observation falls in the requested range.
 
 ## Selection
 

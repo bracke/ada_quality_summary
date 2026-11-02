@@ -170,12 +170,15 @@ package body Ada_Quality_Summary.Options is
       Seen_Flags   : array (1 .. 4) of Boolean := [others => False];
       Index        : Positive := 1;
 
-      --  Return the option value from `--name=value` or the following argument.
+      --  Return the option value from `--name=value` or the following argument. A following argument that is itself
+      --  an option is not taken as the value; a value starting with `--` must use the `--name=value` form.
       function Value_Of (Option : String; Inline : String; Has_Inline : Boolean) return String is
       begin
          if Has_Inline then
             return Inline;
-         elsif Index >= Natural (Arguments.Length) then
+         elsif Index >= Natural (Arguments.Length)
+           or else Ada.Strings.Fixed.Head (Arguments (Index + 1), 2) = "--"
+         then
             Fail ("error.missing_value", [Arg ("option", Option)]);
          end if;
          Index := Index + 1;

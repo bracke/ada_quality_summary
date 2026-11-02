@@ -1,7 +1,7 @@
 name = "ada_quality_summary_tests"
 description = "AUnit acceptance tests and test tools for ada_quality_summary"
 version = "0.1.0-dev"
-executables = ["ada_quality_summary_tests", "aqs_writer", "aqs_trap", "aqs_schema_check", "aqs_demo", "aqs_coverage", "check_all"]
+executables = ["ada_quality_summary_tests", "aqs_writer", "aqs_trap", "aqs_schema_check", "aqs_demo", "aqs_coverage", "check_all", "aqs_release_stage"]
 
 [[depends-on]]
 gnat_native = "=15.2.1"

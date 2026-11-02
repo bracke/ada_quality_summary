@@ -1,6 +1,7 @@
 with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 with Ada_Quality_Summary.Filtering;
+with Ada_Quality_Summary.Rules.Counting;
 with Ada_Quality_Summary.Trends;
 
 package body Ada_Quality_Summary.Aggregation is
@@ -63,32 +64,11 @@ package body Ada_Quality_Summary.Aggregation is
       Totals : Portfolio_Totals;
    begin
       for Item of Projects loop
-         Totals.Projects := Totals.Projects + 1;
-         case Item.Quality is
-            when Passing => Totals.Passing := Totals.Passing + 1;
-            when Violations => Totals.Violations := Totals.Violations + 1;
-            when Incomplete => Totals.Incomplete := Totals.Incomplete + 1;
-            when Unassessed => Totals.Unassessed := Totals.Unassessed + 1;
-         end case;
-         if Item.Enabled then
-            Totals.Enabled := Totals.Enabled + 1;
-         else
-            Totals.Disabled := Totals.Disabled + 1;
-         end if;
-         Totals.Findings := Totals.Findings + Item.Finding_Count;
-         Totals.Indicator_Violations := Totals.Indicator_Violations + Item.Totals.Violated;
-         Totals.Unknown_Results := Totals.Unknown_Results + Item.Totals.Unknown_Count;
-         case Item.Newer_Run is
-            when Newer_Running => Totals.Newer_Running := Totals.Newer_Running + 1;
-            when Newer_Interrupted | Newer_Invalid => Totals.Newer_Unfinished := Totals.Newer_Unfinished + 1;
-            when No_Newer_Run => null;
-         end case;
-         if Item.Regression_Count > 0 then
-            Totals.With_Regressions := Totals.With_Regressions + 1;
-         end if;
+         Rules.Counting.Add_Project
+           (Rules.Portfolio_Totals (Totals), Rules.Quality_State (Item.Quality), Enabled => Item.Enabled,
+            Findings => Item.Finding_Count, Violated => Item.Totals.Violated, Unknown => Item.Totals.Unknown_Count,
+            Newer => Rules.Newer_State (Item.Newer_Run), Regressed => Item.Regression_Count > 0);
       end loop;
-      pragma Assert (Totals.Projects = Totals.Passing + Totals.Violations + Totals.Incomplete + Totals.Unassessed);
-      pragma Assert (Totals.Projects = Totals.Enabled + Totals.Disabled);
       return Totals;
    end Build_Totals;
 
@@ -138,13 +118,8 @@ package body Ada_Quality_Summary.Aggregation is
          Name => To_Unbounded_String (Descriptor.Name.all), others => <>);
    begin
       for Project of Projects loop
-         case State_Of (Data, Project, Indicator) is
-            when Pass_State => Result.Totals.Passed := Result.Totals.Passed + 1;
-            when Violation_State => Result.Totals.Violated := Result.Totals.Violated + 1;
-            when Unknown_State => Result.Totals.Unknown_Count := Result.Totals.Unknown_Count + 1;
-            when Not_Applicable_State => Result.Totals.Not_Applicable := Result.Totals.Not_Applicable + 1;
-            when Missing_State => Result.Totals.Missing := Result.Totals.Missing + 1;
-         end case;
+         Rules.Counting.Tally
+           (Rules.Indicator_Totals (Result.Totals), Rules.Result_State (State_Of (Data, Project, Indicator)));
       end loop;
       Result.Affected := Result.Totals.Violated;
       pragma Assert (Sum (Result.Totals) = Natural (Projects.Length));
@@ -169,20 +144,20 @@ package body Ada_Quality_Summary.Aggregation is
       for Project of Projects loop
          if Project.Current_Run_Id = 0 then
             for Item of Result loop
-               Item.Totals.Missing := Item.Totals.Missing + 1;
+               Rules.Counting.Tally (Rules.Indicator_Totals (Item.Totals), Rules.Missing_State);
             end loop;
          else
             for Value of Repository.Assessment (Data, Project.Current_Run_Id).Results loop
                declare
                   Item : Indicator_Summary renames Result (Indicator_Id'Pos (Value.Indicator) + 1);
                begin
-                  case Value.Compliance is
-                     when Pass => Item.Totals.Passed := Item.Totals.Passed + 1;
-                     when Violation => Item.Totals.Violated := Item.Totals.Violated + 1;
-                     when Unknown => Item.Totals.Unknown_Count := Item.Totals.Unknown_Count + 1;
-                     when Compliance_Status'(Not_Applicable) =>
-                        Item.Totals.Not_Applicable := Item.Totals.Not_Applicable + 1;
-                  end case;
+                  Rules.Counting.Tally
+                    (Rules.Indicator_Totals (Item.Totals),
+                     (case Value.Compliance is
+                         when Pass => Rules.Pass_State,
+                         when Violation => Rules.Violation_State,
+                         when Unknown => Rules.Unknown_State,
+                         when Compliance_Status'(Not_Applicable) => Rules.Not_Applicable_State));
                end;
             end loop;
          end if;

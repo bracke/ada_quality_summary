@@ -3,7 +3,8 @@
 ```sh
 alr test                        # build tests/ and run the AUnit suite
 tests/bin/aqs_coverage          # instrumented suite and the 90% production line-coverage gate
-tests/bin/check_all             # release checks incl. GNATdoc warnings (from the repository root)
+tests/bin/aqs_release_stage     # stage and build the pin-free release manifest
+tests/bin/check_all             # all release checks, incl. GNATdoc, proof, and staged release (repository root)
 ```
 
 ## Fixtures
@@ -57,6 +58,12 @@ writer, readers killed mid-report, layouts, and every sort key.
 Concurrency cases use separate operating-system processes: `tests/bin/aqs_writer` holds the writer lock, publishes
 assessments, or recovers interrupted runs while `bin/ada-quality-summary` reports. A report is either complete and
 internally consistent or a typed busy failure; it is never a mixture of generations.
+
+## Proof
+
+`tests/bin/check_all` runs `alr exec -- gnatprove -P spark_rules.gpr --checks-as-errors=on --warnings=error`, so an
+unproved check in `Ada_Quality_Summary.Rules.Counting` fails the release. The proved properties are listed in
+`docs/architecture.md`.
 
 ## Coverage
 

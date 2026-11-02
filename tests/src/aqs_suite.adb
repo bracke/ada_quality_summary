@@ -670,15 +670,26 @@ package body Aqs_Suite is
                Expect (Contains (Output (Report (Database, "project|alpha|--width|120")), "91.23%"),
                        "terminal renders exact percentages");
                Expect (Contains (Json (Database, "trends"), """unit"":""basis_points"""), "units are preserved");
+               Expect_Equal (Value (Json (Database, "trends|--since|2100-01-01"), "data.series[1].measurement_kind"),
+                             """decimal""", "an empty series keeps the indicator's measurement kind");
             end;
          when T047 =>
             Ada_Quality.Storage.Testing_Use_Legacy_Evidence (True);
             Ignored := Publish (Database, Build (Project, Shape ("DOC-01")));
             Ada_Quality.Storage.Testing_Use_Legacy_Evidence (False);
+            Ignored := Publish (Database, Build (Register (Database, Parent (Database), "beta"), Shape));
             declare
                Text     : constant String := Json (Database, "history|alpha");
                Filtered : constant String := Json (Database, "history|alpha|--since|2000-01-01");
+               Trend    : constant String := Json (Database, "trends|--since|2000-01-01");
+               Daily    : constant String := Json (Database, "trends");
             begin
+               Expect_Equal (Value (Trend, "data.comparison_metadata.undated_excluded"), "1",
+                             "each undated run is reported once, not once per numeric series");
+               Expect_Equal (Value (Daily, "data.snapshots[0].projects"), "2", "both projects are in the snapshot");
+               Expect_Equal (Value (Daily, "data.snapshots[0].unassessed"), "0",
+                             "a legacy assessment precedes every snapshot day and keeps its project assessed");
+               Expect_Equal (Value (Daily, "data.snapshots[0].violations"), "1", "the legacy state is classified");
                Expect_Equal (Value (Text, "data.runs[0].finished_at"), "null", "no timestamp is invented");
                Expect_Equal (Value (Text, "data.runs[0].started_at"), "null", "no start time is invented");
                Expect_Equal (Value (Filtered, "data.runs"), "[]", "undated runs are not placed in a date range");
@@ -1029,6 +1040,7 @@ package body Aqs_Suite is
 
    procedure Output_Failure is
       Database : constant String := Standard_Database ("T041");
+      Before   : constant File_State_Vectors.Vector := Capture (Parent (Database));
       Args     : GNAT.OS_Lib.Argument_List_Access := Argument_List ("--database|" & Database & "|summary");
       Success  : Boolean;
       Code     : Integer;
@@ -1036,7 +1048,7 @@ package body Aqs_Suite is
       GNAT.OS_Lib.Spawn (Binary, Args.all, "/dev/full", Success, Code, Err_To_Out => False);
       GNAT.OS_Lib.Free (Args);
       Expect (Code = 3, "an output stream failure exits with the reporting code");
-      Expect (Same (Capture (Parent (Database)), Capture (Parent (Database))), "cleanup leaves the database intact");
+      Expect (Same (Before, Capture (Parent (Database))), "cleanup leaves the database intact");
       Expect (Spawn ("--database|" & Database & "|summary").Status = 0, "no lock is left behind");
    end Output_Failure;
 
@@ -1252,6 +1264,7 @@ package body Aqs_Suite is
       Expect (Fails ("summary --limit 1 --limit 2"), "duplicate scalar options are rejected");
       Expect (Fails ("summary --status great"), "unknown statuses are rejected");
       Expect (Fails ("summary --database"), "missing values are rejected");
+      Expect (Fails ("summary --database --format json"), "an option is never taken as another option's value");
       Expect (Fails ("summary -x"), "short options are rejected");
       Expect (Fails ("summary --reverse=yes"), "flags take no value");
       Expect (Fails ("help nothing"), "unknown help topics are rejected");

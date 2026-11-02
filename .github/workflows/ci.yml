@@ -42,6 +42,10 @@ jobs:
         # Pinned to the version the release gate is verified with locally.
         if: steps.gnatdoc.outputs.cache-hit != 'true'
         run: alr --non-interactive install gnatdoc=25.2.0
+      - name: Install GNATprove
+        # A prebuilt binary archive, so it is installed on every run rather than cached; check_all proves
+        # spark_rules.gpr with it.
+        run: alr --non-interactive install gnatprove=15.1.0
       - name: Put Alire-installed tools on PATH
         shell: bash
         run: echo "$HOME/.alire/bin" >> "$GITHUB_PATH"
@@ -67,6 +71,6 @@ jobs:
           if-no-files-found: ignore
       - name: Run release checks
         # Required structure and schemas, toolchain, warnings-as-errors validation build,
-        # test build, GNATdoc without warnings, the AUnit suite, and the coverage evidence.
+        # test build, GNATdoc without warnings, the SPARK rules proof, the staged pin-free release, the AUnit suite, and the coverage evidence.
         working-directory: ada_quality_summary
         run: ./tests/bin/check_all
