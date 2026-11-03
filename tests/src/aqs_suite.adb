@@ -640,12 +640,36 @@ package body Aqs_Suite is
             Ignored := Publish (Database, Build (Project, Shape));
             Ignored := Publish (Database, Build (Project, Shape ("DOC-02 TST-01")));
             declare
-               Text : constant String := Json (Database, "regressions|--sort|indicator");
+               Text  : constant String := Json (Database, "regressions|--sort|indicator");
+               Count : constant Natural := Count_Of (Text, "data.regressions");
+               Seen  : Ada.Strings.Unbounded.Unbounded_String;
+
+               --  Index of the regression with this indicator and kind, or -1.
+               function Find (Indicator, Kind : String) return Integer is
+               begin
+                  for Index in 0 .. Count - 1 loop
+                     if Value (Text, "data.regressions[" & Image (Index) & "].indicator_id") = '"' & Indicator & '"'
+                       and then Value (Text, "data.regressions[" & Image (Index) & "].kind") = '"' & Kind & '"'
+                     then
+                        return Index;
+                     end if;
+                  end loop;
+                  return -1;
+               end Find;
             begin
+               for Index in 0 .. Count - 1 loop
+                  Append (Seen, " " & Value (Text, "data.regressions[" & Image (Index) & "].indicator_id") & "/" &
+                            Value (Text, "data.regressions[" & Image (Index) & "].kind"));
+               end loop;
                Expect_Equal (Value (Text, "data.regressions[0].indicator_id"), """TST-01""", "registry order");
-               Expect_Equal (Value (Text, "data.regressions[0].kind"), """failed_gate""", "gates fail");
-               Expect_Equal (Value (Text, "data.regressions[1].kind"), """new_violation""", "nongates violate");
-               Expect_Equal (Value (Text, "data.regressions[1].before"), """succeeded/pass""", "before state");
+               Expect (Find ("TST-01", "failed_gate") >= 0, "gates fail:" & To_String (Seen));
+               Expect (Find ("DOC-02", "new_violation") >= 0, "nongates violate:" & To_String (Seen));
+               Expect (Find ("DOC-02", "new_violation") < 0 or else
+                         Value (Text, "data.regressions[" & Image (Find ("DOC-02", "new_violation")) & "].before") =
+                         """succeeded/pass""",
+                       "before state");
+               Expect (Find ("DOC-02", "introduced_finding") >= 0,
+                       "a finding absent from all earlier evidence is introduced:" & To_String (Seen));
                Expect_Equal (Value (Text, "data.projects_affected"), "1", "one project is affected");
             end;
          when T023 =>

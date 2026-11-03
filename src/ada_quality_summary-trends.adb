@@ -58,6 +58,26 @@ package body Ada_Quality_Summary.Trends is
 
    function Comparisons return Natural is (Comparison_Count);
 
+   --  Findings of the runs older than the baseline that are compatible with the current run, in run order: the
+   --  evidence Ada_Quality.History.Compare needs to tell a reintroduced finding from a newly introduced one. This is
+   --  the selection the Ada Quality regressions command makes.
+   function Findings_Before
+     (Data        : Repository.Snapshot;
+      Items       : Ada_Quality.Storage.History_Vectors.Vector;
+      Baseline_Id : Positive;
+      Current     : Ada_Quality.Storage.History_Item) return Ada_Quality.Storage.Detail_Vectors.Vector
+   is
+      Result : Ada_Quality.Storage.Detail_Vectors.Vector;
+   begin
+      for Item of Items loop
+         exit when Item.Id = Baseline_Id;
+         if Ada_Quality.History.Compatible (Item, Current) then
+            Result.Append_Vector (Repository.History_Evidence (Data, Item.Id).Findings);
+         end if;
+      end loop;
+      return Result;
+   end Findings_Before;
+
    procedure Regressions
      (Data       : Repository.Snapshot;
       Project_Id : Positive;
@@ -118,7 +138,8 @@ package body Ada_Quality_Summary.Trends is
                Found    : constant Ada_Quality.History.Regression_Vectors.Vector :=
                  Ada_Quality.History.Compare
                    (Baseline_Item, Current_Item, Old_Rows.Results, New_Rows.Results, Old_Rows.Measurements,
-                    New_Rows.Measurements, Old_Rows.Findings, New_Rows.Findings);
+                    New_Rows.Measurements, Old_Rows.Findings, New_Rows.Findings,
+                    Findings_Before (Data, Items, Baseline_Id, Current_Item));
             begin
                for Change of Found loop
                   Changes.Append

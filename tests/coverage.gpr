@@ -5,6 +5,7 @@ with "terminal_styles";
 with "messages";
 with "jsonlib";
 with "humanize";
+with "hostkit";
 
 --  Instrumented build of the production sources, the AUnit suite, and the test tools for line coverage.
 project Coverage is

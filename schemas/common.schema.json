@@ -106,6 +106,8 @@
         "increased_severity",
         "failed_gate",
         "lost_evidence",
+        "introduced_finding",
+        "reintroduced_finding",
         "policy_induced_change"
       ]
     },
@@ -713,6 +715,14 @@
           "type": "integer",
           "minimum": 0
         },
+        "introduced_finding": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reintroduced_finding": {
+          "type": "integer",
+          "minimum": 0
+        },
         "policy_induced_change": {
           "type": "integer",
           "minimum": 0
@@ -724,6 +734,8 @@
         "increased_severity",
         "failed_gate",
         "lost_evidence",
+        "introduced_finding",
+        "reintroduced_finding",
         "policy_induced_change"
       ],
       "additionalProperties": false

@@ -45,8 +45,10 @@ terminal overview keeps its total finding count; `problems` lists the groups.
 
 `Ada_Quality.History.Baseline_Id` selects the newest earlier compatible completed run (same project, nonempty source
 fingerprints, equal policy and toolchain fingerprints). `Ada_Quality.History.Compare` classifies changes as
-`new_violation`, `worsened_metric`, `increased_severity`, `failed_gate`, `lost_evidence`, or
-`policy_induced_change`. The summary adds the project identity and explains every newer completed run that was
+`new_violation`, `worsened_metric`, `increased_severity`, `failed_gate`, `lost_evidence`, `introduced_finding`,
+`reintroduced_finding`, or `policy_induced_change`. Like the Ada Quality regressions command, the summary passes the
+findings of compatible runs older than the baseline, so a finding that returns from older evidence is
+`reintroduced_finding` rather than `introduced_finding`. The summary adds the project identity and explains every newer completed run that was
 skipped as incompatible (`policy_changed`, `toolchain_changed`, `missing_source_fingerprint`). Without a compatible
 baseline the status is `no_baseline` and no regression is reported.
 
