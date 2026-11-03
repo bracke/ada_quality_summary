@@ -40,23 +40,18 @@ package body Ada_Quality_Summary.Options is
    function Is_Historical (Command : Command_Kind) return Boolean is
      (Command in Trends_Command | History_Command);
 
-   function Image (Key : Sort_Key) return String is
-     (case Key is
-         when Default_Sort => "default",
-         when Sort_Name => "name",
-         when Sort_Id => "id",
-         when Sort_Path => "path",
-         when Sort_Quality => "quality",
-         when Sort_Violations => "violations",
-         when Sort_Unknown => "unknown",
-         when Sort_Findings => "findings",
-         when Sort_Affected => "affected",
-         when Sort_Severity => "severity",
-         when Sort_Indicator => "indicator",
-         when Sort_Project => "project",
-         when Sort_Kind => "kind",
-         when Sort_Run => "run",
-         when Sort_State => "state");
+   type Text_Access is access constant String;
+
+   Sort_Names : constant array (Sort_Key) of Text_Access :=
+     [Default_Sort => new String'("default"), Sort_Name => new String'("name"), Sort_Id => new String'("id"),
+      Sort_Path => new String'("path"), Sort_Quality => new String'("quality"),
+      Sort_Violations => new String'("violations"), Sort_Unknown => new String'("unknown"),
+      Sort_Findings => new String'("findings"), Sort_Affected => new String'("affected"),
+      Sort_Severity => new String'("severity"), Sort_Indicator => new String'("indicator"),
+      Sort_Project => new String'("project"), Sort_Kind => new String'("kind"), Sort_Run => new String'("run"),
+      Sort_State => new String'("state")];
+
+   function Image (Key : Sort_Key) return String is (Sort_Names (Key).all);
 
    function Allowed (Command : Command_Kind; Key : Sort_Key) return Boolean is
    begin
@@ -88,7 +83,7 @@ package body Ada_Quality_Summary.Options is
       end case;
    end Allowed;
 
-   procedure Fail (Key : String; Args : Argument_List := No_Arguments) is
+   procedure Fail (Key : String; Args : Argument_List := No_Arguments) with No_Return is
    begin
       raise Argument_Error with Message (Key, Args);
    end Fail;
@@ -149,6 +144,38 @@ package body Ada_Quality_Summary.Options is
       return Natural'Value (Text);
    end Parse_Natural;
 
+   --  Parse the value of an option that takes one of a fixed set of spellings.
+   generic
+      type Choice is (<>);
+      Names : access constant String;
+      --  Spellings in the order of Choice, separated by ", ".
+   function Parse_Choice (Option, Value : String) return Choice;
+
+   function Parse_Choice (Option, Value : String) return Choice is
+      Start : Positive := Names'First;
+   begin
+      for Candidate in Choice loop
+         declare
+            Stop : constant Natural := Ada.Strings.Fixed.Index (Names.all, ", ", From => Start);
+            Last : constant Natural := (if Stop = 0 then Names'Last else Stop - 1);
+         begin
+            if Names (Start .. Last) = Value then
+               return Candidate;
+            end if;
+            Start := Last + 3;
+         end;
+      end loop;
+      Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value), Arg ("choices", Names.all)]);
+   end Parse_Choice;
+
+   Format_Names : aliased constant String := "terminal, json";
+   Color_Names  : aliased constant String := "auto, always, never";
+   Layout_Names : aliased constant String := "compact, normal, detailed";
+
+   function Parse_Format is new Parse_Choice (Output_Format, Format_Names'Access);
+   function Parse_Color is new Parse_Choice (Color_Mode, Color_Names'Access);
+   function Parse_Layout is new Parse_Choice (Layout_Mode, Layout_Names'Access);
+
    function Parse_Command (Text : String; Command : out Command_Kind) return Boolean is
    begin
       for Candidate in Summary_Command .. Help_Command loop
@@ -160,6 +187,26 @@ package body Ada_Quality_Summary.Options is
       Command := Summary_Command;
       return False;
    end Parse_Command;
+
+   function Parse_Sort (Value : String) return Sort_Key is
+   begin
+      for Key in Sort_Name .. Sort_Key'Last loop
+         if Image (Key) = Value then
+            return Key;
+         end if;
+      end loop;
+      Fail ("error.unknown_sort", [Arg ("value", Value)]);
+   end Parse_Sort;
+
+   function Parse_Status (Option, Value : String) return Ada_Quality_Summary.Model.Project_Quality_State is
+      Status : Ada_Quality_Summary.Model.Project_Quality_State;
+   begin
+      if not Ada_Quality_Summary.Model.Parse (Value, Status) then
+         Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value),
+               Arg ("choices", "passing, violations, incomplete, unassessed")]);
+      end if;
+      return Status;
+   end Parse_Status;
 
    function Parse (Arguments : String_Vectors.Vector) return Options is
       Result       : Options;
@@ -210,132 +257,97 @@ package body Ada_Quality_Summary.Options is
                Fail ("error.unexpected_value", [Arg ("option", Option)]);
             end if;
          end No_Inline;
-      begin
-         if Option = "--help" then
-            No_Inline;
-            Help_Flag := True;
-         elsif Option = "--version" then
-            No_Inline;
-            Version_Flag := True;
-         elsif Option = "--database" then
-            Once (Result.Has_Database, Option);
-            Result.Database := To_Unbounded_String (Value_Of (Option, Inline, Has_Inline));
-            if Length (Result.Database) = 0 then
-               Fail ("error.empty_database");
-            end if;
-         elsif Option = "--format" then
-            Once (Has_Format, Option);
-            declare
-               Value : constant String := Value_Of (Option, Inline, Has_Inline);
-            begin
-               if Value = "terminal" then
-                  Result.Format := Terminal_Format;
-               elsif Value = "json" then
-                  Result.Format := JSON_Format;
-               else
-                  Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value),
-                        Arg ("choices", "terminal, json")]);
-               end if;
-            end;
-         elsif Option = "--color" or else Option = "--no-color" then
-            Once (Result.Has_Color, "--color");
-            if Option = "--no-color" then
-               No_Inline;
+
+         function Value return String is (Value_Of (Option, Inline, Has_Inline));
+
+         --  Handle a flag without a value; return False when Option is not a flag.
+         function Flag_Option return Boolean is
+         begin
+            if Option = "--help" then
+               Help_Flag := True;
+            elsif Option = "--version" then
+               Version_Flag := True;
+            elsif Option = "--include-removed" then
+               Flag (1, Option);
+               Result.Include_Removed := True;
+            elsif Option = "--enabled-only" then
+               Flag (2, Option);
+               Result.Enabled_Only := True;
+            elsif Option = "--reverse" then
+               Flag (3, Option);
+               Result.Reverse_Order := True;
+            elsif Option = "--pretty" then
+               Flag (4, Option);
+               Result.Pretty := True;
+            elsif Option = "--no-color" then
+               Once (Result.Has_Color, "--color");
                Result.Color := Color_Never;
             else
-               declare
-                  Value : constant String := Value_Of (Option, Inline, Has_Inline);
-               begin
-                  if Value = "auto" then
-                     Result.Color := Color_Auto;
-                  elsif Value = "always" then
-                     Result.Color := Color_Always;
-                  elsif Value = "never" then
-                     Result.Color := Color_Never;
-                  else
-                     Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value),
-                           Arg ("choices", "auto, always, never")]);
-                  end if;
-               end;
+               return False;
             end if;
-         elsif Option = "--layout" then
-            Once (Result.Has_Layout, Option);
-            declare
-               Value : constant String := Value_Of (Option, Inline, Has_Inline);
-            begin
-               if Value = "compact" then
-                  Result.Layout := Compact_Layout;
-               elsif Value = "normal" then
-                  Result.Layout := Normal_Layout;
-               elsif Value = "detailed" then
-                  Result.Layout := Detailed_Layout;
-               else
-                  Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value),
-                        Arg ("choices", "compact, normal, detailed")]);
+            No_Inline;
+            return True;
+         end Flag_Option;
+
+         --  Handle an option that selects output presentation; return False when Option is not one.
+         function Output_Option return Boolean is
+         begin
+            if Option = "--format" then
+               Once (Has_Format, Option);
+               Result.Format := Parse_Format (Option, Value);
+            elsif Option = "--color" then
+               Once (Result.Has_Color, Option);
+               Result.Color := Parse_Color (Option, Value);
+            elsif Option = "--layout" then
+               Once (Result.Has_Layout, Option);
+               Result.Layout := Parse_Layout (Option, Value);
+            elsif Option = "--width" then
+               Once (Has_Width, Option);
+               Result.Width := Parse_Natural (Option, Value);
+               if Result.Width not in Minimum_Width .. Maximum_Width then
+                  Fail ("error.width_range", [Arg ("minimum", Minimum_Width), Arg ("maximum", Maximum_Width)]);
                end if;
-            end;
-         elsif Option = "--width" then
-            Once (Has_Width, Option);
-            Result.Width := Parse_Natural (Option, Value_Of (Option, Inline, Has_Inline));
-            if Result.Width not in Minimum_Width .. Maximum_Width then
-               Fail ("error.width_range", [Arg ("minimum", Minimum_Width), Arg ("maximum", Maximum_Width)]);
+            elsif Option = "--sort" then
+               Once (Has_Sort, Option);
+               Result.Sort := Parse_Sort (Value);
+            elsif Option = "--limit" then
+               Once (Has_Limit, Option);
+               Result.Limit := Parse_Natural (Option, Value);
+            else
+               return False;
             end if;
-         elsif Option = "--include-removed" then
-            No_Inline;
-            Flag (1, Option);
-            Result.Include_Removed := True;
-         elsif Option = "--enabled-only" then
-            No_Inline;
-            Flag (2, Option);
-            Result.Enabled_Only := True;
-         elsif Option = "--reverse" then
-            No_Inline;
-            Flag (3, Option);
-            Result.Reverse_Order := True;
-         elsif Option = "--pretty" then
-            No_Inline;
-            Flag (4, Option);
-            Result.Pretty := True;
-         elsif Option = "--project" then
-            Once (Result.Has_Project, Option);
-            Result.Project := To_Unbounded_String (Value_Of (Option, Inline, Has_Inline));
-         elsif Option = "--status" then
-            Once (Result.Has_Status, Option);
-            declare
-               Value : constant String := Value_Of (Option, Inline, Has_Inline);
-            begin
-               if not Ada_Quality_Summary.Model.Parse (Value, Result.Status) then
-                  Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value),
-                        Arg ("choices", "passing, violations, incomplete, unassessed")]);
+            return True;
+         end Output_Option;
+
+         --  Handle an option that selects the database or the reported population; return False when Option is
+         --  not one.
+         function Selection_Option return Boolean is
+         begin
+            if Option = "--database" then
+               Once (Result.Has_Database, Option);
+               Result.Database := To_Unbounded_String (Value);
+               if Length (Result.Database) = 0 then
+                  Fail ("error.empty_database");
                end if;
-            end;
-         elsif Option = "--sort" then
-            Once (Has_Sort, Option);
-            declare
-               Value : constant String := Value_Of (Option, Inline, Has_Inline);
-               Found : Boolean := False;
-            begin
-               for Key in Sort_Name .. Sort_Key'Last loop
-                  if Image (Key) = Value then
-                     Result.Sort := Key;
-                     Found := True;
-                  end if;
-               end loop;
-               if not Found then
-                  Fail ("error.unknown_sort", [Arg ("value", Value)]);
-               end if;
-            end;
-         elsif Option = "--limit" then
-            Once (Has_Limit, Option);
-            Result.Limit := Parse_Natural (Option, Value_Of (Option, Inline, Has_Inline));
-         elsif Option = "--since" then
-            Once (Has_Since, Option);
-            Result.Since := (Present => True, Value => Parse_Date (Value_Of (Option, Inline, Has_Inline)));
-         elsif Option = "--until" then
-            Once (Has_Until, Option);
-            Result.Until_Date :=
-              (Present => True, Value => Parse_Date (Value_Of (Option, Inline, Has_Inline)) + 86_400.0);
-         else
+            elsif Option = "--project" then
+               Once (Result.Has_Project, Option);
+               Result.Project := To_Unbounded_String (Value);
+            elsif Option = "--status" then
+               Once (Result.Has_Status, Option);
+               Result.Status := Parse_Status (Option, Value);
+            elsif Option = "--since" then
+               Once (Has_Since, Option);
+               Result.Since := (Present => True, Value => Parse_Date (Value));
+            elsif Option = "--until" then
+               Once (Has_Until, Option);
+               Result.Until_Date := (Present => True, Value => Parse_Date (Value) + 86_400.0);
+            else
+               return False;
+            end if;
+            return True;
+         end Selection_Option;
+      begin
+         if not (Flag_Option or else Output_Option or else Selection_Option) then
             Fail ("error.unknown_option", [Arg ("option", Option)]);
          end if;
       end Handle_Option;
@@ -356,35 +368,86 @@ package body Ada_Quality_Summary.Options is
             Fail ("error.unexpected_argument", [Arg ("argument", Item)]);
          end if;
       end Handle_Positional;
-   begin
-      while Index <= Natural (Arguments.Length) loop
-         declare
-            Item : constant String := Arguments (Index);
-         begin
-            if Item'Length >= 2 and then Item (Item'First .. Item'First + 1) = "--" then
-               Handle_Option (Item);
-            elsif Item'Length > 1 and then Item (Item'First) = '-' then
-               Fail ("error.unknown_option", [Arg ("option", Item)]);
-            else
-               Handle_Positional (Item);
-            end if;
-         end;
-         Index := Index + 1;
-      end loop;
 
-      if Version_Flag then
-         Result.Command := Version_Command;
-         return Result;
-      elsif Help_Flag then
-         if Has_Command and then Result.Command /= Help_Command then
-            Result.Target := To_Unbounded_String (Name (Result.Command));
-            Result.Has_Target := True;
+      --  Reject targets, filters, and dates that the command does not accept.
+      procedure Check_Scope is
+         Command : constant String := Name (Result.Command);
+      begin
+         if Result.Command in Project_Command | History_Command and then not Result.Has_Target then
+            Fail ("error.missing_project", [Arg ("command", Command)]);
+         elsif Result.Command = Indicator_Command and then not Result.Has_Target then
+            Fail ("error.missing_indicator");
+         elsif Result.Has_Project and then not Is_Collection (Result.Command) then
+            Fail ("error.option_not_allowed", [Arg ("option", "--project"), Arg ("command", Command)]);
+         elsif Result.Has_Status and then not Is_Collection (Result.Command) then
+            Fail ("error.option_not_allowed", [Arg ("option", "--status"), Arg ("command", Command)]);
          end if;
-         Result.Command := Help_Command;
-      end if;
+      end Check_Scope;
 
-      if Result.Command = Help_Command then
-         if Result.Has_Target then
+      --  Reject a date range the command does not accept or that is empty.
+      procedure Check_Dates is
+      begin
+         if (Has_Since or else Has_Until) and then not Is_Historical (Result.Command) then
+            Fail ("error.option_not_allowed",
+                  [Arg ("option", (if Has_Since then "--since" else "--until")),
+                   Arg ("command", Name (Result.Command))]);
+         elsif Result.Since.Present and then Result.Until_Date.Present and then
+           Result.Since.Value >= Result.Until_Date.Value
+         then
+            Fail ("error.date_order");
+         end if;
+      end Check_Dates;
+
+      --  Reject presentation options that the output format or command does not accept.
+      procedure Check_Presentation is
+         Command : constant String := Name (Result.Command);
+      begin
+         if Result.Format = JSON_Format and then (Result.Has_Layout or else Has_Width) then
+            Fail ("error.terminal_only", [Arg ("option", (if Result.Has_Layout then "--layout" else "--width"))]);
+         elsif Result.Format = Terminal_Format and then Result.Pretty then
+            Fail ("error.json_only", [Arg ("option", "--pretty")]);
+         elsif not Allowed (Result.Command, Result.Sort) then
+            Fail ("error.sort_not_allowed", [Arg ("value", Image (Result.Sort)), Arg ("command", Command)]);
+         elsif Result.Reverse_Order and then Result.Command = Help_Command then
+            Fail ("error.option_not_allowed", [Arg ("option", "--reverse"), Arg ("command", Command)]);
+         end if;
+      end Check_Presentation;
+
+      procedure Read_Arguments is
+      begin
+         while Index <= Natural (Arguments.Length) loop
+            declare
+               Item : constant String := Arguments (Index);
+            begin
+               if Item'Length >= 2 and then Item (Item'First .. Item'First + 1) = "--" then
+                  Handle_Option (Item);
+               elsif Item'Length > 1 and then Item (Item'First) = '-' then
+                  Fail ("error.unknown_option", [Arg ("option", Item)]);
+               else
+                  Handle_Positional (Item);
+               end if;
+            end;
+            Index := Index + 1;
+         end loop;
+      end Read_Arguments;
+
+      --  Turn `--version` and `--help` into their commands; return True when no further validation applies.
+      function Resolve_Help_And_Version return Boolean is
+      begin
+         if Version_Flag then
+            if Natural (Arguments.Length) > 1 then
+               Fail ("error.version_alone");
+            end if;
+            Result.Command := Version_Command;
+            return True;
+         elsif Help_Flag then
+            if Has_Command and then Result.Command /= Help_Command then
+               Result.Target := To_Unbounded_String (Name (Result.Command));
+               Result.Has_Target := True;
+            end if;
+            Result.Command := Help_Command;
+         end if;
+         if Result.Command = Help_Command and then Result.Has_Target then
             declare
                Topic : Command_Kind;
             begin
@@ -393,33 +456,16 @@ package body Ada_Quality_Summary.Options is
                end if;
             end;
          end if;
+         return Result.Command = Help_Command;
+      end Resolve_Help_And_Version;
+   begin
+      Read_Arguments;
+      if Resolve_Help_And_Version then
          return Result;
       end if;
-
-      if Result.Command in Project_Command | History_Command and then not Result.Has_Target then
-         Fail ("error.missing_project", [Arg ("command", Name (Result.Command))]);
-      elsif Result.Command = Indicator_Command and then not Result.Has_Target then
-         Fail ("error.missing_indicator");
-      elsif Result.Has_Project and then not Is_Collection (Result.Command) then
-         Fail ("error.option_not_allowed", [Arg ("option", "--project"), Arg ("command", Name (Result.Command))]);
-      elsif Result.Has_Status and then not Is_Collection (Result.Command) then
-         Fail ("error.option_not_allowed", [Arg ("option", "--status"), Arg ("command", Name (Result.Command))]);
-      elsif (Has_Since or else Has_Until) and then not Is_Historical (Result.Command) then
-         Fail ("error.option_not_allowed",
-               [Arg ("option", (if Has_Since then "--since" else "--until")), Arg ("command", Name (Result.Command))]);
-      elsif Result.Since.Present and then Result.Until_Date.Present and then
-        Result.Since.Value >= Result.Until_Date.Value
-      then
-         Fail ("error.date_order");
-      elsif Result.Format = JSON_Format and then (Result.Has_Layout or else Has_Width) then
-         Fail ("error.terminal_only", [Arg ("option", (if Result.Has_Layout then "--layout" else "--width"))]);
-      elsif Result.Format = Terminal_Format and then Result.Pretty then
-         Fail ("error.json_only", [Arg ("option", "--pretty")]);
-      elsif not Allowed (Result.Command, Result.Sort) then
-         Fail ("error.sort_not_allowed", [Arg ("value", Image (Result.Sort)), Arg ("command", Name (Result.Command))]);
-      elsif Result.Reverse_Order and then Result.Command = Help_Command then
-         Fail ("error.option_not_allowed", [Arg ("option", "--reverse"), Arg ("command", Name (Result.Command))]);
-      end if;
+      Check_Scope;
+      Check_Dates;
+      Check_Presentation;
       return Result;
    end Parse;
 end Ada_Quality_Summary.Options;

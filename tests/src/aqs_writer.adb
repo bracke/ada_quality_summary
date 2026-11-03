@@ -7,7 +7,8 @@ with Aqs_Fixtures;
 --
 --  Usage:
 --    aqs_writer hold DATABASE SECONDS        hold the exclusive writer lock
---    aqs_writer publish DATABASE PROJECT N   publish N assessments, retrying while readers hold the lock
+--    aqs_writer publish DATABASE PROJECT N   publish N assessments, the K-th with TST-03 = 5000 + K basis points,
+--                                            retrying while readers hold the lock
 --    aqs_writer recover DATABASE             recover interrupted assessments
 procedure Aqs_Writer is
    use Ada.Command_Line;
@@ -40,7 +41,10 @@ begin
                   declare
                      Id : constant Positive :=
                        Aqs_Fixtures.Publish
-                         (Database, Aqs_Fixtures.Build (Positive'Value (Argument (3)), (others => <>)));
+                         (Database,
+                          Aqs_Fixtures.Build
+                            (Positive'Value (Argument (3)),
+                             (Coverage => 5_000 + Long_Long_Integer (Index), others => <>)));
                      pragma Unreferenced (Id);
                   begin
                      --  Leave readers a window, as successive real assessments would.

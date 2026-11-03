@@ -14,8 +14,11 @@ package Aqs_Fixtures is
    subtype UString is Ada.Strings.Unbounded.Unbounded_String;
    --  Fixture text.
 
-   Root : constant String := "obj/fixtures";
-   --  Directory holding every disposable fixture, relative to the tests crate.
+   function Root return String;
+   --  Directory holding every disposable fixture: a per-process directory under the system temporary directory,
+   --  outside the project so that test runs leave the project's artifact trees unchanged. It is removed when the
+   --  test program exits unless AQS_KEEP_FIXTURES is set.
+   --  @return Absolute fixture directory.
 
    function Dir (Name : String) return String;
    --  Return a fresh, empty fixture directory.

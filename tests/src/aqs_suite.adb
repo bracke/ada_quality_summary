@@ -214,6 +214,9 @@ package body Aqs_Suite is
 
    function Int (Text : String) return Natural is (Natural'Value (Text));
 
+   function Image (Number : Natural) return String is
+     (Ada.Strings.Fixed.Trim (Natural'Image (Number), Ada.Strings.Left));
+
    procedure Expect (Condition : Boolean; Message : String) is
    begin
       Assert (Condition, Message);
@@ -523,6 +526,9 @@ package body Aqs_Suite is
                Expect (Value (Text, "data.findings[0].project_id") /= Value (Text, "data.findings[1].project_id"),
                        "occurrences belong to separate projects");
                Expect_Equal (Value (Text, "data.grouped_by_indicator[0].projects"), "2", "grouped by project");
+               Expect_Equal (Value (Json (Database, "summary"), "data.findings_by_indicator"),
+                             Value (Text, "data.grouped_by_indicator"),
+                             "the overview aggregates findings by indicator exactly as the problems report");
             end;
          when T015 =>
             A := Register (Database, Parent (Database), "alpha");
@@ -917,7 +923,8 @@ package body Aqs_Suite is
       Pid      : GNAT.OS_Lib.Process_Id;
       Done     : GNAT.OS_Lib.Process_Id;
       Success  : Boolean;
-      Reports  : Natural := 0;
+      Reports     : Natural := 0;
+      Points_Seen : Natural := 0;
    begin
       Pid := GNAT.OS_Lib.Non_Blocking_Spawn (Tool ("aqs_writer"), Args.all, Log, Err_To_Out => True);
       GNAT.OS_Lib.Free (Args);
@@ -940,10 +947,33 @@ package body Aqs_Suite is
                Expect (Result.Status = 4 and then Contains (Text, "locked"), "only a typed busy failure is allowed");
             end if;
          end;
+         --  The K-th publication carries TST-03 = 5000 + K. Runs, results, and measurements of one generation give
+         --  exactly 5001 .. 5000 + M in run order; rows from two generations would leave a gap or a stray value.
+         declare
+            Result : constant Process_Result :=
+              Spawn ("--database|" & Database & "|trends|--project|gamma|--format|json");
+            Text   : constant String := To_String (Result.Output);
+         begin
+            if Result.Status = 0 then
+               Expect_Equal (Value (Text, "data.series[1].indicator_id"), """TST-03""", "TST-03 series");
+               for Index in 0 .. Count_Of (Text, "data.series[1].points") - 1 loop
+                  Expect_Equal (Value (Text, "data.series[1].points[" & Image (Index) & "].value"),
+                                Image (5_001 + Index), "every publication of one generation, in order");
+                  Points_Seen := Points_Seen + 1;
+               end loop;
+            else
+               Expect (Result.Status = 4 and then Contains (Text, "locked"), "only a typed busy failure is allowed");
+            end if;
+         end;
       end loop;
       GNAT.OS_Lib.Wait_Process (Done, Success);
       Expect (Success, "the writer publishes every assessment: " & Project_Tools.Files.Read_Raw_File (Log));
       Expect (Reports > 0, "reports interleave with publication");
+      Expect (Points_Seen > 0, "the generation check observed published measurements");
+      if Ada.Environment_Variables.Exists ("AQS_TIMING") then
+         Ada.Text_IO.Put_Line
+           ("T040 reports:" & Natural'Image (Reports) & " points checked:" & Natural'Image (Points_Seen));
+      end if;
       declare
          Final : constant String := Json (Database, "history|gamma");
       begin
@@ -1082,7 +1112,7 @@ package body Aqs_Suite is
       Clear_Env ("AQS_TRAP_LOG");
       Expect (not Ada.Directories.Exists (Log), "no assessment tool is spawned");
    exception
-      when others =>
+      when others =>  --  AQ: audited exception boundary -- restores PATH and re-raises
          Set_Env ("PATH", Saved);
          raise;
    end No_Tools;
@@ -1265,6 +1295,8 @@ package body Aqs_Suite is
       Expect (Fails ("summary --status great"), "unknown statuses are rejected");
       Expect (Fails ("summary --database"), "missing values are rejected");
       Expect (Fails ("summary --database --format json"), "an option is never taken as another option's value");
+      Expect (Fails ("--version --pretty"), "--version takes no other arguments");
+      Expect (not Fails ("--version"), "--version alone succeeds");
       Expect (Fails ("summary -x"), "short options are rejected");
       Expect (Fails ("summary --reverse=yes"), "flags take no value");
       Expect (Fails ("help nothing"), "unknown help topics are rejected");
@@ -1313,7 +1345,7 @@ package body Aqs_Suite is
          Expect (Exit_Of (Result) = 0, "the default database is read: " & Errors (Result));
       end;
    exception
-      when others =>
+      when others =>  --  AQ: audited exception boundary -- restores the directory and environment, re-raises
          Ada.Directories.Set_Directory (Saved_Dir);
          Clear_Env ("ADA_QUALITY_DATABASE");
          raise;

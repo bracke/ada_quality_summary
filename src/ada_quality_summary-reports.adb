@@ -141,9 +141,176 @@ package body Ada_Quality_Summary.Reports is
      (Data : Repository.Snapshot; Invocation : Options.Options; Database_Label : String) return Report
    is
       Item       : Report;
-      Population : Ada_Quality.Reporting.Project_Vectors.Vector;
-      All_Rows   : Project_Vectors.Vector;
       Selected   : Project_Vectors.Vector;
+
+      --  Select the reported projects: the target of a detail command, or the filtered population.
+      procedure Select_Projects is
+      begin
+         if Invocation.Command in Project_Command | History_Command then
+            declare
+               Id : constant Positive :=
+                 Filtering.Resolve_Project (Data, To_String (Invocation.Target), Invocation.Include_Removed);
+            begin
+               Item.Filter.Project_Id := Id;
+               Item.Project := Build_Project (Data, Repository.Project (Data, Id));
+               Selected.Append (Item.Project);
+            end;
+         else
+            for Row of Build_Projects (Data, Filtering.Population (Data, Item.Filter)) loop
+               if not Item.Filter.Has_Status or else Row.Quality = Item.Filter.Status then
+                  Selected.Append (Row);
+               end if;
+            end loop;
+         end if;
+      end Select_Projects;
+
+      --  Summary and projects: sorted, limited rows; the summary adds indicators, findings, and regressions.
+      procedure Fill_Overview is
+      begin
+         Filtering.Sort_Projects
+           (Item.Portfolio.Projects, Invocation.Sort, Invocation.Command = Summary_Command,
+            Invocation.Reverse_Order);
+         Limit_Projects (Item.Portfolio.Projects, Invocation.Limit);
+         if Invocation.Command = Summary_Command then
+            for Indicator of Build_Indicators (Data, Selected) loop
+               if Indicator.Totals.Violated > 0 then
+                  Item.Common.Append (Indicator);
+               end if;
+            end loop;
+            Filtering.Sort_Common (Item.Common);
+            --  The overview aggregates findings by indicator; only the counts are reported.
+            Item.Findings := Build_Findings (Data, Selected);
+            Count_Findings (Item);
+            Item.Findings.Clear;
+            for Row of Selected loop
+               Add_Regressions (Item, Data, Row.Project_Id);
+            end loop;
+         end if;
+      end Fill_Overview;
+
+      --  Project: the current assessment, its findings, and its regressions.
+      procedure Fill_Project is
+      begin
+         if Item.Project.Current_Run_Id /= 0 then
+            Item.Has_Assessment := True;
+            Item.Assessment := Repository.Assessment (Data, Item.Project.Current_Run_Id);
+            Item.Findings := Aggregation.Findings_Of (Item.Project.Project_Id, Item.Assessment);
+            Count_Findings (Item);
+            Filtering.Sort_Findings (Item.Findings, Default_Sort, False);
+            Limit_Findings (Item.Findings, Invocation.Limit);
+            Sort_Results (Item.Assessment.Results, Invocation.Sort, Invocation.Reverse_Order);
+         end if;
+         Add_Regressions (Item, Data, Item.Project.Project_Id);
+         Filtering.Sort_Regressions (Item.Regressions, Default_Sort, False);
+      end Fill_Project;
+
+      --  Indicators: one aggregate per indicator.
+      procedure Fill_Indicators is
+      begin
+         Item.Indicators := Build_Indicators (Data, Selected);
+         Filtering.Sort_Indicators (Item.Indicators, Invocation.Sort, Invocation.Reverse_Order);
+         Item.Row_Count := Natural (Item.Indicators.Length);
+         Limit_Indicators (Item.Indicators, Invocation.Limit);
+      end Fill_Indicators;
+
+      --  Indicator: the aggregate and one row per selected project.
+      procedure Fill_Indicator is
+      begin
+         declare
+            Id : constant Indicator_Id := Filtering.Resolve_Indicator (To_String (Invocation.Target));
+         begin
+            Item.Indicator := Build_Indicator (Data, Selected, Id);
+            for Row of Selected loop
+               declare
+                  Line : Indicator_Row := (Project => Row, State => State_Of (Data, Row, Id), others => <>);
+               begin
+                  if Row.Current_Run_Id /= 0 then
+                     Line.Has_Result := True;
+                     Line.Result :=
+                       Repository.Assessment (Data, Row.Current_Run_Id).Results (Indicator_Id'Pos (Id) + 1);
+                  end if;
+                  Item.Indicator_Rows.Append (Line);
+               end;
+            end loop;
+            Sort_Rows (Item.Indicator_Rows, Invocation.Sort, Invocation.Reverse_Order);
+            Limit_Rows (Item.Indicator_Rows, Invocation.Limit);
+         end;
+      end Fill_Indicator;
+
+      --  Problems: every finding of the selected current assessments.
+      procedure Fill_Problems is
+      begin
+         Item.Findings := Build_Findings (Data, Selected);
+         Count_Findings (Item);
+         Filtering.Sort_Findings (Item.Findings, Invocation.Sort, Invocation.Reverse_Order);
+         Item.Row_Count := Item.Finding_Total;
+         Limit_Findings (Item.Findings, Invocation.Limit);
+      end Fill_Problems;
+
+      --  Regressions: every regression of the selected projects.
+      procedure Fill_Regressions is
+      begin
+         for Row of Selected loop
+            Add_Regressions (Item, Data, Row.Project_Id);
+         end loop;
+         Filtering.Sort_Regressions (Item.Regressions, Invocation.Sort, Invocation.Reverse_Order);
+         Item.Row_Count := Item.Regression_Total;
+         Limit_Regressions (Item.Regressions, Invocation.Limit);
+      end Fill_Regressions;
+
+      --  Trends: numeric series, undated runs, and daily snapshots.
+      procedure Fill_Trends is
+      begin
+         for Id in Indicator_Id loop
+            if Ada_Quality.Indicators.Measurement_Unit (Id) /= "none" then
+               declare
+                  Series : Trend_Summary :=
+                    Trends.Metric_Series (Data, Selected, Id, Invocation.Since, Invocation.Until_Date);
+               begin
+                  Filtering.Sort_Points (Series.Points, Invocation.Sort, Invocation.Reverse_Order);
+                  Limit_Points (Series.Points, Invocation.Limit);
+                  Item.Series.Append (Series);
+               end;
+            end if;
+         end loop;
+         Item.Undated := Trends.Undated_Runs (Data, Selected, Invocation.Since, Invocation.Until_Date);
+         Item.Daily := Trends.Daily_States (Data, Selected, Invocation.Since, Invocation.Until_Date);
+      end Fill_Trends;
+
+      --  History: a project's runs and their lifecycle counts.
+      procedure Fill_History is
+      begin
+         Item.History :=
+           Trends.History (Data, Item.Project.Project_Id, Invocation.Since, Invocation.Until_Date, Item.Undated);
+         for Run of Item.History loop
+            case Run.State is
+               when Assessment_Completed => Item.Completed_Count := Item.Completed_Count + 1;
+               when Assessment_Running => Item.Running_Count := Item.Running_Count + 1;
+               when Assessment_Interrupted => Item.Interrupted_Count := Item.Interrupted_Count + 1;
+               when Assessment_Invalid => Item.Invalid_Count := Item.Invalid_Count + 1;
+            end case;
+         end loop;
+         Filtering.Sort_History (Item.History, Invocation.Reverse_Order);
+         Item.Row_Count := Natural (Item.History.Length);
+         Limit_History (Item.History, Invocation.Limit);
+      end Fill_History;
+
+      procedure Fill_Command is
+      begin
+         case Invocation.Command is
+            when Summary_Command | Projects_Command => Fill_Overview;
+            when Project_Command => Fill_Project;
+            when Indicators_Command => Fill_Indicators;
+            when Indicator_Command => Fill_Indicator;
+            when Problems_Command => Fill_Problems;
+            when Regressions_Command => Fill_Regressions;
+            when Trends_Command => Fill_Trends;
+            when History_Command => Fill_History;
+            when Help_Command | Version_Command =>
+               raise Report_Error with "command does not produce a report";
+         end case;
+      end Fill_Command;
+
    begin
       Item.Metadata :=
         (Format_Version => Report_Format_Version, Source_Schema_Version => Repository.Schema_Version (Data),
@@ -162,136 +329,12 @@ package body Ada_Quality_Summary.Reports is
            Filtering.Resolve_Project (Data, To_String (Invocation.Project), Invocation.Include_Removed);
       end if;
 
-      case Invocation.Command is
-         when Project_Command | History_Command =>
-            declare
-               Id : constant Positive :=
-                 Filtering.Resolve_Project (Data, To_String (Invocation.Target), Invocation.Include_Removed);
-            begin
-               Item.Filter.Project_Id := Id;
-               Item.Project := Build_Project (Data, Repository.Project (Data, Id));
-               Selected.Append (Item.Project);
-            end;
-         when others =>
-            Population := Filtering.Population (Data, Item.Filter);
-            All_Rows := Build_Projects (Data, Population);
-            for Row of All_Rows loop
-               if not Item.Filter.Has_Status or else Row.Quality = Item.Filter.Status then
-                  Selected.Append (Row);
-               end if;
-            end loop;
-      end case;
+      Select_Projects;
       Item.Metadata.Selected_Projects := Natural (Selected.Length);
       Item.Portfolio := Build_Portfolio (Data, Selected);
       Item.Row_Count := Natural (Selected.Length);
 
-      case Invocation.Command is
-         when Summary_Command | Projects_Command =>
-            Filtering.Sort_Projects
-              (Item.Portfolio.Projects, Invocation.Sort, Invocation.Command = Summary_Command,
-               Invocation.Reverse_Order);
-            Limit_Projects (Item.Portfolio.Projects, Invocation.Limit);
-            if Invocation.Command = Summary_Command then
-               for Indicator of Build_Indicators (Data, Selected) loop
-                  if Indicator.Totals.Violated > 0 then
-                     Item.Common.Append (Indicator);
-                  end if;
-               end loop;
-               Filtering.Sort_Common (Item.Common);
-               for Row of Selected loop
-                  Add_Regressions (Item, Data, Row.Project_Id);
-               end loop;
-            end if;
-
-         when Project_Command =>
-            if Item.Project.Current_Run_Id /= 0 then
-               Item.Has_Assessment := True;
-               Item.Assessment := Repository.Assessment (Data, Item.Project.Current_Run_Id);
-               Item.Findings := Aggregation.Findings_Of (Item.Project.Project_Id, Item.Assessment);
-               Count_Findings (Item);
-               Filtering.Sort_Findings (Item.Findings, Default_Sort, False);
-               Limit_Findings (Item.Findings, Invocation.Limit);
-               Sort_Results (Item.Assessment.Results, Invocation.Sort, Invocation.Reverse_Order);
-            end if;
-            Add_Regressions (Item, Data, Item.Project.Project_Id);
-            Filtering.Sort_Regressions (Item.Regressions, Default_Sort, False);
-
-         when Indicators_Command =>
-            Item.Indicators := Build_Indicators (Data, Selected);
-            Filtering.Sort_Indicators (Item.Indicators, Invocation.Sort, Invocation.Reverse_Order);
-            Item.Row_Count := Natural (Item.Indicators.Length);
-            Limit_Indicators (Item.Indicators, Invocation.Limit);
-
-         when Indicator_Command =>
-            declare
-               Id : constant Indicator_Id := Filtering.Resolve_Indicator (To_String (Invocation.Target));
-            begin
-               Item.Indicator := Build_Indicator (Data, Selected, Id);
-               for Row of Selected loop
-                  declare
-                     Line : Indicator_Row := (Project => Row, State => State_Of (Data, Row, Id), others => <>);
-                  begin
-                     if Row.Current_Run_Id /= 0 then
-                        Line.Has_Result := True;
-                        Line.Result :=
-                          Repository.Assessment (Data, Row.Current_Run_Id).Results (Indicator_Id'Pos (Id) + 1);
-                     end if;
-                     Item.Indicator_Rows.Append (Line);
-                  end;
-               end loop;
-               Sort_Rows (Item.Indicator_Rows, Invocation.Sort, Invocation.Reverse_Order);
-               Limit_Rows (Item.Indicator_Rows, Invocation.Limit);
-            end;
-
-         when Problems_Command =>
-            Item.Findings := Build_Findings (Data, Selected);
-            Count_Findings (Item);
-            Filtering.Sort_Findings (Item.Findings, Invocation.Sort, Invocation.Reverse_Order);
-            Item.Row_Count := Item.Finding_Total;
-            Limit_Findings (Item.Findings, Invocation.Limit);
-
-         when Regressions_Command =>
-            for Row of Selected loop
-               Add_Regressions (Item, Data, Row.Project_Id);
-            end loop;
-            Filtering.Sort_Regressions (Item.Regressions, Invocation.Sort, Invocation.Reverse_Order);
-            Item.Row_Count := Item.Regression_Total;
-            Limit_Regressions (Item.Regressions, Invocation.Limit);
-
-         when Trends_Command =>
-            for Id in Indicator_Id loop
-               if Ada_Quality.Indicators.Measurement_Unit (Id) /= "none" then
-                  declare
-                     Series : Trend_Summary :=
-                       Trends.Metric_Series (Data, Selected, Id, Invocation.Since, Invocation.Until_Date);
-                  begin
-                     Filtering.Sort_Points (Series.Points, Invocation.Sort, Invocation.Reverse_Order);
-                     Limit_Points (Series.Points, Invocation.Limit);
-                     Item.Series.Append (Series);
-                  end;
-               end if;
-            end loop;
-            Item.Undated := Trends.Undated_Runs (Data, Selected, Invocation.Since, Invocation.Until_Date);
-            Item.Daily := Trends.Daily_States (Data, Selected, Invocation.Since, Invocation.Until_Date);
-
-         when History_Command =>
-            Item.History :=
-              Trends.History (Data, Item.Project.Project_Id, Invocation.Since, Invocation.Until_Date, Item.Undated);
-            for Run of Item.History loop
-               case Run.State is
-                  when Assessment_Completed => Item.Completed_Count := Item.Completed_Count + 1;
-                  when Assessment_Running => Item.Running_Count := Item.Running_Count + 1;
-                  when Assessment_Interrupted => Item.Interrupted_Count := Item.Interrupted_Count + 1;
-                  when Assessment_Invalid => Item.Invalid_Count := Item.Invalid_Count + 1;
-               end case;
-            end loop;
-            Filtering.Sort_History (Item.History, Invocation.Reverse_Order);
-            Item.Row_Count := Natural (Item.History.Length);
-            Limit_History (Item.History, Invocation.Limit);
-
-         when Help_Command | Version_Command =>
-            raise Report_Error with "command does not produce a report";
-      end case;
+      Fill_Command;
       return Item;
    end Build;
 end Ada_Quality_Summary.Reports;

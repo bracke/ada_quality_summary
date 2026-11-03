@@ -1,6 +1,7 @@
 with Ada.Calendar;
 with Ada.Containers.Indefinite_Vectors;
 with Ada.Strings.Unbounded;
+with Ada_Quality_Summary.Limits;
 with Ada_Quality_Summary.Model;
 
 --  Strict, noninteractive command-line parsing.
@@ -114,7 +115,7 @@ package Ada_Quality_Summary.Options is
 
    Minimum_Width : constant := 20;
    --  Narrowest accepted `--width`.
-   Maximum_Width : constant := 500;
+   Maximum_Width : constant := Ada_Quality_Summary.Limits.Maximum_Width;
    --  Widest accepted or used terminal width.
 
    type Options is record

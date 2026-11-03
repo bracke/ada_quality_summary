@@ -1,14 +1,45 @@
 with Ada.Containers;
 with Ada.Directories;
+with Ada.Environment_Variables;
+with Ada.Finalization;
 with Ada.Strings.Fixed;
 with Ada_Quality.Indicators;
 with Ada_Quality_Summary.Options;
+with GNAT.OS_Lib;
 with Project_Tools.Files;
 
 package body Aqs_Fixtures is
    use Ada.Strings.Unbounded;
 
    LF : constant Character := Character'Val (10);
+
+   Fixture_Root : constant String :=
+     Project_Tools.Files.Join
+       (Project_Tools.Files.Temp_Dir,
+        "aqs-fixtures-" & Ada.Strings.Fixed.Trim
+          (Integer'Image (GNAT.OS_Lib.Pid_To_Integer (GNAT.OS_Lib.Current_Process_Id)), Ada.Strings.Left));
+
+   function Root return String is (Fixture_Root);
+
+   --  Removes the fixture directory when the test program finalizes its library units.
+   type Fixture_Cleanup is new Ada.Finalization.Limited_Controlled with null record;
+
+   overriding procedure Finalize (Item : in out Fixture_Cleanup);
+
+   overriding procedure Finalize (Item : in out Fixture_Cleanup) is
+      pragma Unreferenced (Item);
+   begin
+      if not Ada.Environment_Variables.Exists ("AQS_KEEP_FIXTURES") and then Ada.Directories.Exists (Fixture_Root)
+      then
+         Ada.Directories.Delete_Tree (Fixture_Root);
+      end if;
+   exception
+      when others =>  --  AQ: audited exception boundary -- cleanup at program exit must not mask the test result
+         null;
+   end Finalize;
+
+   Cleanup : Fixture_Cleanup;
+   pragma Unreferenced (Cleanup);
 
    function Dir (Name : String) return String is
       Path : constant String := Root & "/" & Name;

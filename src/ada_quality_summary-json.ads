@@ -1,10 +1,11 @@
+with Ada_Quality_Summary.Limits;
 with Ada_Quality_Summary.Reports;
 
 --  Versioned JSON serialization of report data; no aggregation, database access, or terminal formatting.
 package Ada_Quality_Summary.JSON is
    --  Versioned JSON serialization of report data.
 
-   Default_Maximum_Bytes : constant := 256 * 1024 * 1024;
+   Default_Maximum_Bytes : constant := Ada_Quality_Summary.Limits.Maximum_JSON_Bytes;
    --  Largest JSON document emitted.
 
    function Render

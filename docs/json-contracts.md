@@ -24,11 +24,14 @@ nullability, and forbids undocumented members.
 `schema_version` versions the report family independently of Ada Quality's assessment JSON. `snapshot` identifies the
 database snapshot the report was computed from.
 
+`database_schema_version` is the persisted Ada Quality schema, currently 3. The specification's envelope examples show
+2, the schema before the timestamp migration that the specification itself requires (section 5.6); 3 is correct.
+
 ## Report data
 
 | `report_type` | `data` members |
 | ------------- | -------------- |
-| `summary` | `totals`, `projects`, `common_violations`, `regression_summary`, `activity` |
+| `summary` | `totals`, `projects`, `common_violations`, `findings_by_indicator`, `regression_summary`, `activity` |
 | `projects` | `projects`, `totals` |
 | `project` | `project`, `assessment`, `indicators`, `findings`, `regressions`, `baseline` |
 | `indicators` | `indicators`, `project_count` |

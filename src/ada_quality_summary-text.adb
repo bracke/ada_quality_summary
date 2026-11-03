@@ -33,6 +33,7 @@ package body Ada_Quality_Summary.Text is
      "en.error.unknown_option = unknown option {option}" & LF &
      "en.error.unknown_sort = unknown sort key {value}" & LF &
      "en.error.width_range = --width must be between {minimum} and {maximum}" & LF &
+     "en.error.version_alone = --version takes no other arguments" & LF &
      "en.error.unknown_project = unknown project {project}" & LF &
      "en.error.ambiguous_project = project name {project} is ambiguous; matching project IDs: {ids}" & LF &
      "en.error.unknown_indicator = unknown indicator {indicator}" & LF &

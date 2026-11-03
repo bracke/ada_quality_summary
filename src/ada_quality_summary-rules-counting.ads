@@ -91,6 +91,65 @@ is
    --  @return True when classifications and enablement partition the projects and per-project flags never
    --  exceed them.
 
+   function Classes_Added (Before, After : Portfolio_Totals; Quality : Quality_State) return Boolean is
+     (After.Passing = Before.Passing + (if Quality = Passing then 1 else 0)
+      and then After.Violations = Before.Violations + (if Quality = Violations then 1 else 0)
+      and then After.Incomplete = Before.Incomplete + (if Quality = Incomplete then 1 else 0)
+      and then After.Unassessed = Before.Unassessed + (if Quality = Unassessed then 1 else 0))
+   with
+     Pre => Before.Passing < Natural'Last and then Before.Violations < Natural'Last
+            and then Before.Incomplete < Natural'Last and then Before.Unassessed < Natural'Last;
+   --  Return whether exactly the classification of Quality gained one project.
+   --  @param Before Counts before the project was added.
+   --  @param After Counts after the project was added.
+   --  @param Quality Classification of the added project.
+   --  @return True when only the count of Quality grew, by one.
+
+   function Results_Added (Before, After : Portfolio_Totals; Violated, Unknown : Natural) return Boolean is
+     (Long_Long_Integer (After.Indicator_Violations) =
+        Long_Long_Integer (Before.Indicator_Violations) + Long_Long_Integer (Violated)
+      and then Long_Long_Integer (After.Unknown_Results) =
+                 Long_Long_Integer (Before.Unknown_Results) + Long_Long_Integer (Unknown));
+   --  Return whether a project's violated and unknown results were added.
+   --  @param Before Counts before the project was added.
+   --  @param After Counts after the project was added.
+   --  @param Violated Violated results of the project.
+   --  @param Unknown Unknown-compliance results of the project.
+   --  @return True when both result counts grew by exactly the project's results.
+
+   function Unchanged_Except_Classification (Before, After : Portfolio_Totals) return Boolean is
+     (After.Enabled = Before.Enabled and then After.Disabled = Before.Disabled
+      and then After.Findings = Before.Findings and then After.Newer_Running = Before.Newer_Running
+      and then After.Newer_Unfinished = Before.Newer_Unfinished
+      and then After.With_Regressions = Before.With_Regressions);
+   --  Return whether the counts outside the classification and result counts are unchanged.
+   --  @param Before Counts before the project was added.
+   --  @param After Counts after the project was added.
+   --  @return True when enablement, findings, newer-run, and regression counts are equal.
+
+   function Flags_Added
+     (Before, After : Portfolio_Totals; Enabled : Boolean; Findings : Natural; Newer : Newer_State;
+      Regressed : Boolean) return Boolean is
+     (After.Enabled = Before.Enabled + (if Enabled then 1 else 0)
+      and then After.Disabled = Before.Disabled + (if Enabled then 0 else 1)
+      and then Long_Long_Integer (After.Findings) = Long_Long_Integer (Before.Findings) + Long_Long_Integer (Findings)
+      and then After.Newer_Running = Before.Newer_Running + (if Newer = Newer_Running then 1 else 0)
+      and then After.Newer_Unfinished =
+                 Before.Newer_Unfinished + (if Newer in Newer_Interrupted | Newer_Invalid then 1 else 0)
+      and then After.With_Regressions = Before.With_Regressions + (if Regressed then 1 else 0))
+   with
+     Pre => Before.Enabled < Natural'Last and then Before.Disabled < Natural'Last
+            and then Before.Newer_Running < Natural'Last and then Before.Newer_Unfinished < Natural'Last
+            and then Before.With_Regressions < Natural'Last;
+   --  Return whether a project's enablement, findings, newer run, and regression flag were added.
+   --  @param Before Counts before the project was added.
+   --  @param After Counts after the project was added.
+   --  @param Enabled Whether the project is enabled.
+   --  @param Findings Persisted findings of the project's current assessment.
+   --  @param Newer Lifecycle of a newer run.
+   --  @param Regressed Whether the current assessment has at least one regression.
+   --  @return True when each of those counts grew by exactly the project's contribution.
+
    procedure Add_Classified
      (Totals : in out Portfolio_Totals; Quality : Quality_State; Violated, Unknown : Natural)
    with
@@ -100,18 +159,9 @@ is
              and then Totals.Unknown_Results <= Natural'Last - Unknown,
      Post => Classified (Totals)
              and then Totals.Projects = Totals'Old.Projects + 1
-             and then Totals.Indicator_Violations = Totals'Old.Indicator_Violations + Violated
-             and then Totals.Unknown_Results = Totals'Old.Unknown_Results + Unknown
-             and then Totals.Passing = Totals'Old.Passing + (if Quality = Passing then 1 else 0)
-             and then Totals.Violations = Totals'Old.Violations + (if Quality = Violations then 1 else 0)
-             and then Totals.Incomplete = Totals'Old.Incomplete + (if Quality = Incomplete then 1 else 0)
-             and then Totals.Unassessed = Totals'Old.Unassessed + (if Quality = Unassessed then 1 else 0)
-             and then Totals.Enabled = Totals'Old.Enabled
-             and then Totals.Disabled = Totals'Old.Disabled
-             and then Totals.Findings = Totals'Old.Findings
-             and then Totals.Newer_Running = Totals'Old.Newer_Running
-             and then Totals.Newer_Unfinished = Totals'Old.Newer_Unfinished
-             and then Totals.With_Regressions = Totals'Old.With_Regressions;
+             and then Classes_Added (Totals'Old, Totals, Quality)
+             and then Results_Added (Totals'Old, Totals, Violated, Unknown)
+             and then Unchanged_Except_Classification (Totals'Old, Totals);
    --  Count one project by its classification and current result counts.
    --  @param Totals Portfolio counts to extend.
    --  @param Quality Project classification.
@@ -135,19 +185,9 @@ is
              and then Totals.Unknown_Results <= Natural'Last - Unknown,
      Post => Consistent (Totals)
              and then Totals.Projects = Totals'Old.Projects + 1
-             and then Totals.Findings = Totals'Old.Findings + Findings
-             and then Totals.Indicator_Violations = Totals'Old.Indicator_Violations + Violated
-             and then Totals.Unknown_Results = Totals'Old.Unknown_Results + Unknown
-             and then Totals.Passing = Totals'Old.Passing + (if Quality = Passing then 1 else 0)
-             and then Totals.Violations = Totals'Old.Violations + (if Quality = Violations then 1 else 0)
-             and then Totals.Incomplete = Totals'Old.Incomplete + (if Quality = Incomplete then 1 else 0)
-             and then Totals.Unassessed = Totals'Old.Unassessed + (if Quality = Unassessed then 1 else 0)
-             and then Totals.Enabled = Totals'Old.Enabled + (if Enabled then 1 else 0)
-             and then Totals.Disabled = Totals'Old.Disabled + (if Enabled then 0 else 1)
-             and then Totals.Newer_Running = Totals'Old.Newer_Running + (if Newer = Newer_Running then 1 else 0)
-             and then Totals.Newer_Unfinished =
-                        Totals'Old.Newer_Unfinished + (if Newer in Newer_Interrupted | Newer_Invalid then 1 else 0)
-             and then Totals.With_Regressions = Totals'Old.With_Regressions + (if Regressed then 1 else 0);
+             and then Classes_Added (Totals'Old, Totals, Quality)
+             and then Results_Added (Totals'Old, Totals, Violated, Unknown)
+             and then Flags_Added (Totals'Old, Totals, Enabled, Findings, Newer, Regressed);
    --  Count one project row.
    --  @param Totals Portfolio counts to extend.
    --  @param Quality Project classification.

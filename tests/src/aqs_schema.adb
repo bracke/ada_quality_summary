@@ -152,41 +152,41 @@ package body Aqs_Schema is
       function Same_Value (Schema : Document_Access; Expected : Node; Value : Node) return Boolean is
         (Jsonlib.Serializers.To_String (Schema.all, Expected) = Jsonlib.Serializers.To_String (Instance, Value));
 
-      function Check
-        (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String
-      is
+      function Index_Path (Path : String; Index : Positive) return String is
+        (Path & "[" & Ada.Strings.Fixed.Trim (Natural'Image (Index - 1), Ada.Strings.Both) & "]");
+
+      --  `$ref` into the same schema or into common.schema.json.
+      function Check_Ref (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+         Reference : constant String := Schema.As_String (Schema.Member (Rule, "$ref"));
+         Problem   : constant String := Resolve (Schema, Reference, Path);
+         Hash      : constant Natural := Ada.Strings.Fixed.Index (Reference, "#/$defs/");
+         Target    : constant Document_Access := (if Hash > Reference'First then Common else Schema);
+      begin
+         if Problem'Length > 0 then
+            return Problem;
+         end if;
+         return Check
+           (Target, Target.Member (Target.Member (Target.Root, "$defs"), Reference (Hash + 8 .. Reference'Last)),
+            Value, Path);
+      end Check_Ref;
+
+      --  `oneOf`: exactly one alternative must match.
+      function Check_One_Of (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+         Options : constant Node := Schema.Member (Rule, "oneOf");
+         Passed  : Natural := 0;
+      begin
+         for Index in 1 .. Schema.Length (Options) loop
+            if Check (Schema, Schema.Element (Options, Index), Value, Path)'Length = 0 then
+               Passed := Passed + 1;
+            end if;
+         end loop;
+         return (if Passed = 1 then "" else Path & ": matches" & Natural'Image (Passed) & " oneOf alternatives");
+      end Check_One_Of;
+
+      --  `const`, `enum`, and `type`.
+      function Check_Value (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
          S : Jsonlib.Documents.Document renames Schema.all;
       begin
-         if S.Has_Member (Rule, "$ref") then
-            declare
-               Reference : constant String := S.As_String (S.Member (Rule, "$ref"));
-               Problem   : constant String := Resolve (Schema, Reference, Path);
-               Hash      : constant Natural := Ada.Strings.Fixed.Index (Reference, "#/$defs/");
-               Target    : constant Document_Access := (if Hash > Reference'First then Common else Schema);
-            begin
-               if Problem'Length > 0 then
-                  return Problem;
-               end if;
-               return Check
-                 (Target, Target.Member (Target.Member (Target.Root, "$defs"), Reference (Hash + 8 .. Reference'Last)),
-                  Value, Path);
-            end;
-         end if;
-         if S.Has_Member (Rule, "oneOf") then
-            declare
-               Options : constant Node := S.Member (Rule, "oneOf");
-               Passed  : Natural := 0;
-            begin
-               for Index in 1 .. S.Length (Options) loop
-                  if Check (Schema, S.Element (Options, Index), Value, Path)'Length = 0 then
-                     Passed := Passed + 1;
-                  end if;
-               end loop;
-               if Passed /= 1 then
-                  return Path & ": matches" & Natural'Image (Passed) & " oneOf alternatives";
-               end if;
-            end;
-         end if;
          if S.Has_Member (Rule, "const") and then not Same_Value (Schema, S.Member (Rule, "const"), Value) then
             return Path & ": does not equal the required constant";
          end if;
@@ -203,90 +203,124 @@ package body Aqs_Schema is
                end if;
             end;
          end if;
-         if S.Has_Member (Rule, "type") then
-            declare
-               Wanted : constant String := S.As_String (S.Member (Rule, "type"));
-            begin
-               if Wanted /= Kind_Name (Value) then
-                  return Path & ": expected " & Wanted & ", found " & Kind_Name (Value);
-               end if;
-            end;
+         if S.Has_Member (Rule, "type") and then S.As_String (S.Member (Rule, "type")) /= Kind_Name (Value) then
+            return Path & ": expected " & S.As_String (S.Member (Rule, "type")) & ", found " & Kind_Name (Value);
          end if;
-         case Instance.Kind (Value) is
-            when Integer_Value =>
-               if S.Has_Member (Rule, "minimum") and then
-                 Instance.As_Integer (Value) < S.As_Integer (S.Member (Rule, "minimum"))
-               then
-                  return Path & ": below minimum";
-               end if;
-            when String_Value =>
-               if S.Has_Member (Rule, "minLength") and then
-                 Instance.As_String (Value)'Length < Natural (S.As_Integer (S.Member (Rule, "minLength")))
-               then
-                  return Path & ": string too short";
-               elsif S.Has_Member (Rule, "pattern") and then
-                 not Matches (S.As_String (S.Member (Rule, "pattern")), Instance.As_String (Value))
-               then
-                  return Path & ": " & Instance.As_String (Value) & " does not match " &
-                    S.As_String (S.Member (Rule, "pattern"));
-               end if;
-            when Array_Value =>
-               if S.Has_Member (Rule, "maxItems") and then
-                 Instance.Length (Value) > Natural (S.As_Integer (S.Member (Rule, "maxItems")))
-               then
-                  return Path & ": too many items";
-               end if;
-               if S.Has_Member (Rule, "items") then
-                  for Index in 1 .. Instance.Length (Value) loop
-                     declare
-                        Problem : constant String :=
-                          Check (Schema, S.Member (Rule, "items"), Instance.Element (Value, Index),
-                                 Path & "[" & Ada.Strings.Fixed.Trim (Natural'Image (Index - 1), Ada.Strings.Both) &
-                                   "]");
-                     begin
-                        if Problem'Length > 0 then
-                           return Problem;
-                        end if;
-                     end;
-                  end loop;
-               end if;
-            when Object_Value =>
-               if S.Has_Member (Rule, "required") then
+         return "";
+      end Check_Value;
+
+      --  `minimum`, `minLength`, and `pattern`.
+      function Check_Scalar (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+         S : Jsonlib.Documents.Document renames Schema.all;
+      begin
+         if Instance.Kind (Value) = Integer_Value then
+            if S.Has_Member (Rule, "minimum") and then
+              Instance.As_Integer (Value) < S.As_Integer (S.Member (Rule, "minimum"))
+            then
+               return Path & ": below minimum";
+            end if;
+         elsif S.Has_Member (Rule, "minLength") and then
+           Instance.As_String (Value)'Length < Natural (S.As_Integer (S.Member (Rule, "minLength")))
+         then
+            return Path & ": string too short";
+         elsif S.Has_Member (Rule, "pattern") and then
+           not Matches (S.As_String (S.Member (Rule, "pattern")), Instance.As_String (Value))
+         then
+            return Path & ": " & Instance.As_String (Value) & " does not match " &
+              S.As_String (S.Member (Rule, "pattern"));
+         end if;
+         return "";
+      end Check_Scalar;
+
+      --  `maxItems` and `items`.
+      function Check_Array (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+         S : Jsonlib.Documents.Document renames Schema.all;
+      begin
+         if S.Has_Member (Rule, "maxItems") and then
+           Instance.Length (Value) > Natural (S.As_Integer (S.Member (Rule, "maxItems")))
+         then
+            return Path & ": too many items";
+         end if;
+         if S.Has_Member (Rule, "items") then
+            for Index in 1 .. Instance.Length (Value) loop
+               declare
+                  Problem : constant String :=
+                    Check (Schema, S.Member (Rule, "items"), Instance.Element (Value, Index), Index_Path (Path, Index));
+               begin
+                  if Problem'Length > 0 then
+                     return Problem;
+                  end if;
+               end;
+            end loop;
+         end if;
+         return "";
+      end Check_Array;
+
+      --  `required`, `properties`, and `additionalProperties`.
+      function Check_Object (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+         S          : Jsonlib.Documents.Document renames Schema.all;
+         Properties : constant Node :=
+           (if S.Has_Member (Rule, "properties") then S.Member (Rule, "properties") else No_Node);
+      begin
+         if S.Has_Member (Rule, "required") then
+            for Index in 1 .. S.Length (S.Member (Rule, "required")) loop
+               declare
+                  Name : constant String := S.As_String (S.Element (S.Member (Rule, "required"), Index));
+               begin
+                  if not Instance.Has_Member (Value, Name) then
+                     return Path & ": missing " & Name;
+                  end if;
+               end;
+            end loop;
+         end if;
+         for Index in 1 .. Instance.Length (Value) loop
+            declare
+               Member_Name : constant String := Instance.Name (Value, Index);
+            begin
+               if Is_Present (Properties) and then S.Has_Member (Properties, Member_Name) then
                   declare
-                     Required : constant Node := S.Member (Rule, "required");
+                     Problem : constant String :=
+                       Check (Schema, S.Member (Properties, Member_Name), Instance.Element (Value, Index),
+                              Path & "." & Member_Name);
                   begin
-                     for Index in 1 .. S.Length (Required) loop
-                        if not Instance.Has_Member (Value, S.As_String (S.Element (Required, Index))) then
-                           return Path & ": missing " & S.As_String (S.Element (Required, Index));
-                        end if;
-                     end loop;
-                  end;
-               end if;
-               for Index in 1 .. Instance.Length (Value) loop
-                  declare
-                     Member_Name : constant String := Instance.Name (Value, Index);
-                     Properties  : constant Node :=
-                       (if S.Has_Member (Rule, "properties") then S.Member (Rule, "properties") else No_Node);
-                  begin
-                     if Is_Present (Properties) and then S.Has_Member (Properties, Member_Name) then
-                        declare
-                           Problem : constant String :=
-                             Check (Schema, S.Member (Properties, Member_Name), Instance.Element (Value, Index),
-                                    Path & "." & Member_Name);
-                        begin
-                           if Problem'Length > 0 then
-                              return Problem;
-                           end if;
-                        end;
-                     elsif S.Has_Member (Rule, "additionalProperties") then
-                        return Path & ": undocumented member " & Member_Name;
+                     if Problem'Length > 0 then
+                        return Problem;
                      end if;
                   end;
-               end loop;
-            when others =>
-               null;
-         end case;
+               elsif S.Has_Member (Rule, "additionalProperties") then
+                  return Path & ": undocumented member " & Member_Name;
+               end if;
+            end;
+         end loop;
          return "";
+      end Check_Object;
+
+      function Check (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+      begin
+         if Schema.Has_Member (Rule, "$ref") then
+            return Check_Ref (Schema, Rule, Value, Path);
+         end if;
+         declare
+            Problem : constant String :=
+              (if Schema.Has_Member (Rule, "oneOf") then Check_One_Of (Schema, Rule, Value, Path) else "");
+         begin
+            if Problem'Length > 0 then
+               return Problem;
+            end if;
+         end;
+         declare
+            Problem : constant String := Check_Value (Schema, Rule, Value, Path);
+         begin
+            if Problem'Length > 0 then
+               return Problem;
+            end if;
+         end;
+         case Instance.Kind (Value) is
+            when Integer_Value | String_Value => return Check_Scalar (Schema, Rule, Value, Path);
+            when Array_Value => return Check_Array (Schema, Rule, Value, Path);
+            when Object_Value => return Check_Object (Schema, Rule, Value, Path);
+            when others => return "";
+         end case;
       end Check;
    begin
       if not Load (Common, "common.schema.json") or else not Load (Primary, Schema_File) then

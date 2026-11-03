@@ -37,6 +37,10 @@ as violation counts. Assessments published before schema 3 have no persisted fin
 `relative_path` and `line` as `null`, and their indicator comes from the stable fingerprint prefix that Ada Quality
 itself uses for regression comparison.
 
+The default overview aggregates findings by indicator: JSON `summary` reports `findings_by_indicator`, the finding
+and project counts per indicator in registry order, with the same shape as `grouped_by_indicator` in `problems`. The
+terminal overview keeps its total finding count; `problems` lists the groups.
+
 ## Regressions
 
 `Ada_Quality.History.Baseline_Id` selects the newest earlier compatible completed run (same project, nonempty source

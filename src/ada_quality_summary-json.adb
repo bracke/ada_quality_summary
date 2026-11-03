@@ -307,6 +307,24 @@ package body Ada_Quality_Summary.JSON is
          return Object;
       end Run_Object;
 
+      --  Findings per indicator in registry order, shared by the summary and problems reports.
+      function Groups_Array return Node is
+         Groups : constant Node := Doc.New_Array;
+      begin
+         for Group of Item.Groups loop
+            declare
+               Object : constant Node := Doc.New_Object;
+            begin
+               Put (Object, "indicator_id", Str (Image (Group.Indicator)));
+               Put (Object, "name", Str (Ada_Quality.Indicators.Registry (Group.Indicator).Name.all));
+               Put (Object, "findings", Nat (Group.Findings));
+               Put (Object, "projects", Nat (Group.Projects));
+               Doc.Append (Groups, Object);
+            end;
+         end loop;
+         return Groups;
+      end Groups_Array;
+
       function Summary_Data return Node is
          Data    : constant Node := Doc.New_Object;
          Common  : constant Node := Doc.New_Array;
@@ -326,6 +344,7 @@ package body Ada_Quality_Summary.JSON is
             end;
          end loop;
          Put (Data, "common_violations", Common);
+         Put (Data, "findings_by_indicator", Groups_Array);
          Put (Summary, "projects_with_regressions", Nat (Item.Projects_Affected));
          Put (Summary, "regressions", Nat (Item.Regression_Total));
          Put (Summary, "by_kind", Kind_Counts_Object (Item.By_Kind));
@@ -425,23 +444,11 @@ package body Ada_Quality_Summary.JSON is
 
       function Problems_Data return Node is
          Data     : constant Node := Doc.New_Object;
-         Groups   : constant Node := Doc.New_Array;
          Totals   : constant Node := Doc.New_Object;
          Severity_Object : constant Node := Doc.New_Object;
       begin
          Put (Data, "findings", Findings_Array (Item.Findings));
-         for Group of Item.Groups loop
-            declare
-               Object : constant Node := Doc.New_Object;
-            begin
-               Put (Object, "indicator_id", Str (Image (Group.Indicator)));
-               Put (Object, "name", Str (Ada_Quality.Indicators.Registry (Group.Indicator).Name.all));
-               Put (Object, "findings", Nat (Group.Findings));
-               Put (Object, "projects", Nat (Group.Projects));
-               Doc.Append (Groups, Object);
-            end;
-         end loop;
-         Put (Data, "grouped_by_indicator", Groups);
+         Put (Data, "grouped_by_indicator", Groups_Array);
          Put (Totals, "findings", Nat (Item.Finding_Total));
          Put (Totals, "projects", Nat (Item.Finding_Projects));
          for Level in reverse Severity loop

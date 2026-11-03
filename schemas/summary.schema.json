@@ -52,6 +52,12 @@
             "additionalProperties": false
           }
         },
+        "findings_by_indicator": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/finding_group"
+          }
+        },
         "regression_summary": {
           "type": "object",
           "properties": {
@@ -97,6 +103,7 @@
         "totals",
         "projects",
         "common_violations",
+        "findings_by_indicator",
         "regression_summary",
         "activity"
       ],

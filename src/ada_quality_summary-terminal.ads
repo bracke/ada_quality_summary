@@ -1,3 +1,4 @@
+with Ada_Quality_Summary.Limits;
 with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Reports;
 
@@ -12,7 +13,7 @@ package Ada_Quality_Summary.Terminal is
    Default_Width : constant := 80;
    --  Width used when none can be determined.
 
-   Maximum_Field_Width : constant := 4_096;
+   Maximum_Field_Width : constant := Ada_Quality_Summary.Limits.Maximum_Field_Width;
    --  Largest displayed text field, in display cells.
 
    type Settings is record

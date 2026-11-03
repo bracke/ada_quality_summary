@@ -3,6 +3,7 @@ with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
+with Ada_Quality_Summary.Limits;
 
 --  Coherent, read-only, in-memory database snapshot for one report invocation.
 --
@@ -27,7 +28,9 @@ package Ada_Quality_Summary.Repository is
    --  How long Load waits for a writer to release the database before failing as busy.
 
    procedure Open
-     (Item : in out Repository; Path : String; Limits : Ada_Quality.Reporting.Load_Limits := (others => <>);
+     (Item          : in out Repository;
+      Path          : String;
+      Limits        : Ada_Quality.Reporting.Load_Limits := Ada_Quality_Summary.Limits.Default_Load;
       Busy_Deadline : Duration := Default_Busy_Deadline);
    --  Select a database for loading.
    --  @param Item Repository.

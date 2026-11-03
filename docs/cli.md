@@ -47,7 +47,7 @@ are exact and case-sensitive.
 | `--until DATE` | `trends`, `history` | Latest UTC date, inclusive. |
 | `--pretty` | JSON | Indent JSON. |
 | `--help` | all | Help for the selected command. |
-| `--version` | all | Print the version. |
+| `--version` | alone | Print the version; any other argument is an argument error. |
 
 Collection commands are `summary`, `projects`, `indicators`, `indicator`, `problems`, `regressions`, and `trends`.
 

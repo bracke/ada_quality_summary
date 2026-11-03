@@ -13,7 +13,9 @@ tests/bin/check_all             # all release checks, incl. GNATdoc, proof, and 
 `Storage.Publish`, `Start_Assessment`, `Interrupt_Assessment`, `Set_Enabled`, and `Remove_Project`. Synthetic
 assessments satisfy the 33-indicator publication invariants. Corruption (`Storage.Testing_Corrupt`) and schema changes
 (`Storage.Testing_Set_Schema_Version`) are applied only to disposable copies. Legacy schema-2 evidence is published
-with `Storage.Testing_Use_Legacy_Evidence`. Fixtures live under `tests/obj/fixtures` and are disposable. No fixture
+with `Storage.Testing_Use_Legacy_Evidence`. Fixtures live in a per-process directory under the system temporary
+directory, outside the project, and are removed when the test program exits (set `AQS_KEEP_FIXTURES` to keep them),
+so test runs leave the project's artifact trees unchanged, as Ada Quality's TST-04 requires. No fixture
 databases are committed: `tests/fixtures/` holds only a note, because stored binary databases would drift from the
 persistence schema they are meant to exercise.
 

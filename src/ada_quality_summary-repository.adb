@@ -7,7 +7,9 @@ package body Ada_Quality_Summary.Repository is
    use type Ada_Quality.Types.Assessment_Status;
 
    procedure Open
-     (Item : in out Repository; Path : String; Limits : Ada_Quality.Reporting.Load_Limits := (others => <>);
+     (Item          : in out Repository;
+      Path          : String;
+      Limits        : Ada_Quality.Reporting.Load_Limits := Ada_Quality_Summary.Limits.Default_Load;
       Busy_Deadline : Duration := Default_Busy_Deadline) is
    begin
       Item.Path := To_Unbounded_String (Path);

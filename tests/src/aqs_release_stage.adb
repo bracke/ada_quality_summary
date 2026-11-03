@@ -142,7 +142,7 @@ begin
       Project_Tools.Release_Checks.Run
         ("staged release build", Stage, Alr, [new String'("--non-interactive"), new String'("build")]);
    exception
-      when others =>
+      when others =>  --  AQ: audited exception boundary -- restores the publish manifest and re-raises
          Project_Tools.Alire_Manifests.Restore_Publish_Manifest (Stage);
          raise;
    end;

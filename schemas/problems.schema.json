@@ -28,30 +28,7 @@
         "grouped_by_indicator": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "indicator_id": {
-                "$ref": "common.schema.json#/$defs/indicator_id"
-              },
-              "name": {
-                "type": "string"
-              },
-              "findings": {
-                "type": "integer",
-                "minimum": 1
-              },
-              "projects": {
-                "type": "integer",
-                "minimum": 1
-              }
-            },
-            "required": [
-              "indicator_id",
-              "name",
-              "findings",
-              "projects"
-            ],
-            "additionalProperties": false
+            "$ref": "common.schema.json#/$defs/finding_group"
           }
         },
         "totals": {

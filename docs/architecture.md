@@ -34,6 +34,7 @@ computation error never leaves partial JSON on standard output.
 | Package | Responsibility |
 | ------- | -------------- |
 | `Ada_Quality_Summary` | Version constants and the three typed error categories. |
+| `.Limits` | Every reporting resource limit. |
 | `.Options` | Strict command-line parsing and validation. |
 | `.Text` | User-visible message catalog rendered through `messages`. |
 | `.Rules` | Counting types: classification, newer-run and result states, indicator and portfolio totals. |
@@ -71,14 +72,16 @@ exports of an unchanged database are byte-identical.
 
 ## Resource limits
 
-| Limit | Default | Enforced by |
-| ----- | ------- | ----------- |
-| Projects loaded | 10,000 | `Ada_Quality.Reporting.Load_Limits` |
-| Assessment runs loaded | 1,000,000 | `Ada_Quality.Reporting.Load_Limits` |
-| Finding records loaded | 2,000,000 | `Ada_Quality.Reporting.Load_Limits` |
-| Terminal width | 500 columns | `Options.Maximum_Width` |
-| Displayed text field | 4,096 display cells | `Terminal.Maximum_Field_Width` |
-| JSON document | 256 MiB | `JSON.Default_Maximum_Bytes` |
+Every limit is declared in `Ada_Quality_Summary.Limits`; the units that enforce them refer to it.
+
+| Limit | Default | Declared as | Enforced by |
+| ----- | ------- | ----------- | ----------- |
+| Projects loaded | 10,000 | `Limits.Maximum_Projects` | `Ada_Quality.Reporting.Load_Limits` via `Limits.Default_Load` |
+| Assessment runs loaded | 1,000,000 | `Limits.Maximum_Runs` | `Ada_Quality.Reporting.Load_Limits` via `Limits.Default_Load` |
+| Finding records loaded | 2,000,000 | `Limits.Maximum_Findings` | `Ada_Quality.Reporting.Load_Limits` via `Limits.Default_Load` |
+| Terminal width | 500 columns | `Limits.Maximum_Width` | `Options.Maximum_Width` |
+| Displayed text field | 4,096 display cells | `Limits.Maximum_Field_Width` | `Terminal.Maximum_Field_Width` |
+| JSON document | 256 MiB | `Limits.Maximum_JSON_Bytes` | `JSON.Default_Maximum_Bytes` |
 | Busy wait for a writer | 1 second | `Repository.Default_Busy_Deadline` |
 
 Exceeding a load or JSON limit is a typed reporting failure (exit 3); machine-readable output is never truncated.

@@ -24,6 +24,7 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | Unit | Main declarations |
 | ---- | ----------------- |
 | `Ada_Quality_Summary` | `Version`, `Report_Format_Version`, `Argument_Error`, `Report_Error`, `Data_Error`. |
+| `.Limits` | `Maximum_Projects`, `Maximum_Runs`, `Maximum_Findings`, `Maximum_Width`, `Maximum_Field_Width`, `Maximum_JSON_Bytes`, `Default_Load`. |
 | `.Options` | `Options`, `Command_Kind`, `Sort_Key`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`. |
 | `.Rules` | `Quality_State`, `Newer_State`, `Result_State`, `Indicator_Totals`, `Portfolio_Totals`. |
 | `.Rules.Counting` | `Total`, `Applicable`, `Sum`, `Tally`, `Classify`, `Priority`, `Classified`, `Consistent`, `Add_Classified`, `Add_Project` (SPARK, proved). |
