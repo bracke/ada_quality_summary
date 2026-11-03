@@ -13,7 +13,8 @@ package Ada_Quality_Summary.Aggregation is
    function Build_Project
      (Data : Ada_Quality_Summary.Repository.Snapshot; Project : Ada_Quality.Reporting.Project_Record)
       return Ada_Quality_Summary.Model.Project_Summary;
-   --  Classify and count one registered project.
+   --  Classify and count one registered project. Regression_Count is left zero: report assembly compares each
+   --  project with its baseline at most once and only for reports that show regressions.
    --  @param Data Snapshot.
    --  @param Project Registry entry.
    --  @return Project row.

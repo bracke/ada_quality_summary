@@ -39,7 +39,7 @@ package Ada_Quality_Summary.Terminal is
    --  @return True for a terminal device.
 
    function Detect_Width (Explicit : Natural) return Positive;
-   --  Select the display width: explicit option, terminal size, COLUMNS, or 80, capped at 500.
+   --  Select the display width: explicit option, terminal size, COLUMNS, or 80, held to the supported range 20 .. 500.
    --  @param Explicit Width from `--width`, or zero.
    --  @return Width in display cells.
 

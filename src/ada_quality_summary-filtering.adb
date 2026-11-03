@@ -24,40 +24,54 @@ package body Ada_Quality_Summary.Filtering is
       return Path (Slash + 1 .. Path'Last);
    end Basename;
 
-   function Is_Number (Text : String) return Boolean is
-     (Text'Length in 1 .. 9 and then (for all C of Text => C in '0' .. '9'));
+   function Parse_Project_Id (Text : String; Id : out Natural) return Boolean is
+      Value : Natural := 0;
+   begin
+      Id := 0;
+      if Text'Length = 0 or else (for some C of Text => C not in '0' .. '9') then
+         return False;
+      end if;
+      for C of Text loop
+         --  Reject before overflowing: Value * 10 + Digit must not exceed Positive'Last.
+         if Value > (Positive'Last - (Character'Pos (C) - Character'Pos ('0'))) / 10 then
+            return False;
+         end if;
+         Value := Value * 10 + (Character'Pos (C) - Character'Pos ('0'));
+      end loop;
+      Id := Value;
+      return Value > 0;
+   end Parse_Project_Id;
 
    function Resolve_Project
      (Data : Ada_Quality_Summary.Repository.Snapshot; Text : String; Include_Removed : Boolean) return Positive
    is
       Candidates : constant Ada_Quality.Reporting.Project_Vectors.Vector :=
         Ada_Quality_Summary.Repository.Projects (Data, Include_Removed);
+      Id         : Natural;
       Found      : Natural := 0;
+      Count      : Natural := 0;
       Matches    : Ada.Strings.Unbounded.Unbounded_String;
    begin
-      if Is_Number (Text) and then Natural'Value (Text) > 0 then
+      if Parse_Project_Id (Text, Id) then
          for Project of Candidates loop
-            if Project.Id = Natural'Value (Text) then
+            if Project.Id = Id then
                return Project.Id;
             end if;
          end loop;
       end if;
       for Project of Candidates loop
          if Basename (To_String (Project.Path)) = Text then
-            if Found /= 0 then
+            if Count > 0 then
                Append (Matches, ", ");
             end if;
             Append (Matches, Ada.Strings.Fixed.Trim (Positive'Image (Project.Id), Ada.Strings.Both));
-            if Found = 0 then
-               Found := Project.Id;
-            else
-               Found := Natural'Last;
-            end if;
+            Found := Project.Id;
+            Count := Count + 1;
          end if;
       end loop;
-      if Found = 0 then
+      if Count = 0 then
          raise Argument_Error with Message ("error.unknown_project", [Arg ("project", Text)]);
-      elsif Found = Natural'Last then
+      elsif Count > 1 then
          raise Argument_Error with
            Message ("error.ambiguous_project", [Arg ("project", Text), Arg ("ids", To_String (Matches))]);
       end if;

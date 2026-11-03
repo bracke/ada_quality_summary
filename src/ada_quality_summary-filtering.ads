@@ -25,6 +25,12 @@ package Ada_Quality_Summary.Filtering is
    --  @field Has_Status Whether the quality-state filter applies.
    --  @field Status Required quality state.
 
+   function Parse_Project_Id (Text : String; Id : out Natural) return Boolean;
+   --  Parse PROJECT as a positive project identity: decimal digits only, any length, within 1 .. Positive'Last.
+   --  @param Text PROJECT argument.
+   --  @param Id Parsed identity, or zero.
+   --  @return True when Text is a positive identity in range.
+
    function Resolve_Project
      (Data : Ada_Quality_Summary.Repository.Snapshot; Text : String; Include_Removed : Boolean) return Positive;
    --  Resolve PROJECT as an exact positive identity, otherwise as an exact case-sensitive directory basename.

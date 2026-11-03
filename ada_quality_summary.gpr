@@ -5,6 +5,7 @@ with "terminal_styles";
 with "messages";
 with "jsonlib";
 with "humanize";
+with "hostkit";
 
 project Ada_Quality_Summary is
    type Boolean_Text is ("false", "true");
@@ -31,6 +32,7 @@ project Ada_Quality_Summary is
    I18n_Root            := external ("I18N_ALIRE_PREFIX", "../i18n");
    Regexp_Root          := external ("REGEXP_ALIRE_PREFIX", "../regexp");
    Humanize_Root        := external ("HUMANIZE_ALIRE_PREFIX", "../humanize");
+   Hostkit_Root         := external ("HOSTKIT_ALIRE_PREFIX", "../hostkit");
 
    for Languages use ("Ada");
    for Source_Dirs use ("src");
@@ -56,6 +58,6 @@ project Ada_Quality_Summary is
         (Ada_Quality_Root & "/ada_quality.gpr", Database_Root & "/database.gpr", Cryptolib_Root & "/cryptolib.gpr",
          Project_Tools_Root & "/project_tools.gpr", Jsonlib_Root & "/jsonlib.gpr",
          Terminal_Styles_Root & "/terminal_styles.gpr", Messages_Root & "/messages.gpr", I18n_Root & "/i18n.gpr",
-         Regexp_Root & "/regexp.gpr", Humanize_Root & "/humanize.gpr");
+         Regexp_Root & "/regexp.gpr", Humanize_Root & "/humanize.gpr", Hostkit_Root & "/hostkit.gpr");
    end Documentation;
 end Ada_Quality_Summary;

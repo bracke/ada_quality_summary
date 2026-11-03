@@ -45,7 +45,7 @@ computation error never leaves partial JSON on standard output.
 | `.Aggregation` | Project rows, portfolio totals, indicator matrix, finding collection. |
 | `.Trends` | Thin adapter over `Ada_Quality.History`: baselines, regressions, histories, metric series, daily states. |
 | `.Reports` | Assembly of the single typed report that both renderers consume. |
-| `.Terminal` | Width-aware terminal rendering, display-cell measurement, color policy. |
+| `.Terminal` | Width-aware terminal rendering, display-cell measurement, color policy; terminal detection and size through `hostkit`. |
 | `.JSON` | Versioned JSON envelope and report-specific data objects. |
 | `.CLI` | Orchestration, database-path precedence, help, exit codes. |
 

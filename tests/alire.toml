@@ -34,6 +34,9 @@ jsonlib = { path = "../../jsonlib" }
 humanize = { path = "../../humanize" }
 
 [[pins]]
+hostkit = { path = "../../hostkit" }
+
+[[pins]]
 database = { path = "../../database" }
 
 [[pins]]

@@ -1,4 +1,5 @@
 with Ada.Containers;
+with Ada.Containers.Ordered_Maps;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 
@@ -86,16 +87,21 @@ package body Ada_Quality_Summary.Reports is
       Sorting.Sort (Items);
    end Sort_Results;
 
-   procedure Add_Regressions (Item : in out Report; Data : Repository.Snapshot; Project_Id : Positive) is
+   --  One project's baseline comparison, made at most once per report.
+   type Comparison is record
       Baseline : Trends.Baseline_Info;
       Changes  : Regression_Summary_Vectors.Vector;
+   end record;
+
+   package Comparison_Maps is new Ada.Containers.Ordered_Maps (Positive, Comparison);
+
+   procedure Add_Regressions (Item : in out Report; Compared : Comparison) is
    begin
-      Trends.Regressions (Data, Project_Id, Baseline, Changes);
-      Item.Baselines.Append (Baseline);
-      if not Changes.Is_Empty then
+      Item.Baselines.Append (Compared.Baseline);
+      if not Compared.Changes.Is_Empty then
          Item.Projects_Affected := Item.Projects_Affected + 1;
       end if;
-      for Change of Changes loop
+      for Change of Compared.Changes loop
          Item.By_Kind (Change.Kind) := Item.By_Kind (Change.Kind) + 1;
          Item.Regressions.Append (Change);
       end loop;
@@ -142,6 +148,7 @@ package body Ada_Quality_Summary.Reports is
    is
       Item       : Report;
       Selected   : Project_Vectors.Vector;
+      Compared   : Comparison_Maps.Map;
 
       --  Select the reported projects: the target of a detail command, or the filtered population.
       procedure Select_Projects is
@@ -164,6 +171,28 @@ package body Ada_Quality_Summary.Reports is
          end if;
       end Select_Projects;
 
+      --  Compare each selected project with its baseline once, for the reports that show regressions or their counts.
+      procedure Compare_Selected is
+      begin
+         if Invocation.Command not in Summary_Command | Projects_Command | Project_Command | History_Command |
+                                      Regressions_Command
+         then
+            return;
+         end if;
+         for Row of Selected loop
+            declare
+               Result : Comparison;
+            begin
+               Trends.Regressions (Data, Row.Project_Id, Result.Baseline, Result.Changes);
+               Row.Regression_Count := Natural (Result.Changes.Length);
+               Compared.Insert (Row.Project_Id, Result);
+            end;
+         end loop;
+         if Invocation.Command in Project_Command | History_Command then
+            Item.Project.Regression_Count := Selected.First_Element.Regression_Count;
+         end if;
+      end Compare_Selected;
+
       --  Summary and projects: sorted, limited rows; the summary adds indicators, findings, and regressions.
       procedure Fill_Overview is
       begin
@@ -183,7 +212,7 @@ package body Ada_Quality_Summary.Reports is
             Count_Findings (Item);
             Item.Findings.Clear;
             for Row of Selected loop
-               Add_Regressions (Item, Data, Row.Project_Id);
+               Add_Regressions (Item, Compared (Row.Project_Id));
             end loop;
          end if;
       end Fill_Overview;
@@ -200,7 +229,7 @@ package body Ada_Quality_Summary.Reports is
             Limit_Findings (Item.Findings, Invocation.Limit);
             Sort_Results (Item.Assessment.Results, Invocation.Sort, Invocation.Reverse_Order);
          end if;
-         Add_Regressions (Item, Data, Item.Project.Project_Id);
+         Add_Regressions (Item, Compared (Item.Project.Project_Id));
          Filtering.Sort_Regressions (Item.Regressions, Default_Sort, False);
       end Fill_Project;
 
@@ -251,7 +280,7 @@ package body Ada_Quality_Summary.Reports is
       procedure Fill_Regressions is
       begin
          for Row of Selected loop
-            Add_Regressions (Item, Data, Row.Project_Id);
+            Add_Regressions (Item, Compared (Row.Project_Id));
          end loop;
          Filtering.Sort_Regressions (Item.Regressions, Invocation.Sort, Invocation.Reverse_Order);
          Item.Row_Count := Item.Regression_Total;
@@ -330,6 +359,7 @@ package body Ada_Quality_Summary.Reports is
       end if;
 
       Select_Projects;
+      Compare_Selected;
       Item.Metadata.Selected_Projects := Natural (Selected.Length);
       Item.Portfolio := Build_Portfolio (Data, Selected);
       Item.Row_Count := Natural (Selected.Length);

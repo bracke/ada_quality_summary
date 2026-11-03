@@ -2,7 +2,6 @@ with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 with Ada_Quality_Summary.Filtering;
 with Ada_Quality_Summary.Rules.Counting;
-with Ada_Quality_Summary.Trends;
 
 package body Ada_Quality_Summary.Aggregation is
    use Ada.Strings.Unbounded;
@@ -32,17 +31,13 @@ package body Ada_Quality_Summary.Aggregation is
       end if;
       if Current /= 0 then
          declare
-            Value    : constant Ada_Quality.Reporting.Assessment_Record := Repository.Assessment (Data, Current);
-            Baseline : Trends.Baseline_Info;
-            Changes  : Regression_Summary_Vectors.Vector;
+            Value : constant Ada_Quality.Reporting.Assessment_Record := Repository.Assessment (Data, Current);
          begin
             Result.Quality := Classify (Value.Results);
             Result.Totals := Count_Indicators (Value.Results);
             for Item of Value.Results loop
                Result.Finding_Count := Result.Finding_Count + Natural (Item.Findings.Length);
             end loop;
-            Trends.Regressions (Data, Project.Id, Baseline, Changes);
-            Result.Regression_Count := Natural (Changes.Length);
          end;
       end if;
       return Result;

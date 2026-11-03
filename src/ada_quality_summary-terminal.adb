@@ -11,9 +11,10 @@ with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Terminal.Output;
 with Ada_Quality_Summary.Text;
 with Ada_Quality_Summary.Trends;
+with Hostkit.Descriptors;
+with Hostkit.Terminal_Control;
 with Humanize.Status;
 with Humanize.Strings;
-with Interfaces.C;
 with Terminal_Styles;
 
 package body Ada_Quality_Summary.Terminal is
@@ -23,8 +24,6 @@ package body Ada_Quality_Summary.Terminal is
    use Ada_Quality_Summary.Options;
    use Ada_Quality_Summary.Reports;
    use Ada_Quality_Summary.Terminal.Output;
-   use type Interfaces.C.int;
-   use type Interfaces.C.unsigned_short;
    use type Ada_Quality.Reporting.Evidence_Format;
    use type Ada_Quality_Summary.Trends.Baseline_Status;
    subtype Unbounded_String is Ada.Strings.Unbounded.Unbounded_String;
@@ -35,24 +34,15 @@ package body Ada_Quality_Summary.Terminal is
    --  Environment
    ------------------------------------------------------------------------------------------------------------------
 
-   function C_Isatty (FD : Interfaces.C.int) return Interfaces.C.int
-     with Import, Convention => C, External_Name => "isatty";
+   --  Terminal detection and size come from hostkit, which answers portably for POSIX terminals and Windows consoles.
+   function Stdout_Is_Terminal return Boolean is
+     (Hostkit.Descriptors.Is_Terminal (Hostkit.Descriptors.Standard_Output));
 
-   type Window_Size is record
-      Rows, Columns, X_Pixels, Y_Pixels : Interfaces.C.unsigned_short := 0;
-   end record
-     with Convention => C;
-
-   function C_Ioctl (FD : Interfaces.C.int; Request : Interfaces.C.unsigned_long; Size : access Window_Size)
-      return Interfaces.C.int
-     with Import, Convention => C_Variadic_2, External_Name => "ioctl";
-
-   TIOCGWINSZ : constant Interfaces.C.unsigned_long := 16#5413#;
-
-   function Stdout_Is_Terminal return Boolean is (C_Isatty (1) /= 0);
-
+   --  A detected width of zero is unknown; any other width is held to the supported range, so a very narrow terminal
+   --  gets the minimum layout rather than a width the renderer does not support.
    function Clamp (Value : Natural) return Positive is
-     (if Value = 0 then Default_Width else Positive'Min (Value, Options.Maximum_Width));
+     (if Value = 0 then Default_Width
+      else Positive'Max (Options.Minimum_Width, Positive'Min (Value, Options.Maximum_Width)));
 
    function Detect_Width (Explicit : Natural) return Positive is
    begin
@@ -61,10 +51,11 @@ package body Ada_Quality_Summary.Terminal is
       end if;
       if Stdout_Is_Terminal then
          declare
-            Size : aliased Window_Size;
+            Size : Hostkit.Terminal_Control.Window_Size;
          begin
-            if C_Ioctl (1, TIOCGWINSZ, Size'Access) = 0 and then Size.Columns > 0 then
-               return Clamp (Natural (Size.Columns));
+            if Hostkit.Terminal_Control.Size (Hostkit.Descriptors.Standard_Output, Size) and then Size.Columns > 0
+            then
+               return Clamp (Size.Columns);
             end if;
          end;
       end if;

@@ -19,6 +19,7 @@ with Ada_Quality.Storage;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Aggregation;
 with Ada_Quality_Summary.CLI;
+with Ada_Quality_Summary.Filtering;
 with Ada_Quality_Summary.JSON;
 with Ada_Quality_Summary.Reports;
 with Ada_Quality_Summary.Model;
@@ -26,6 +27,7 @@ with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
 with Ada_Quality_Summary.Terminal;
 with Ada_Quality_Summary.Text;
+with Ada_Quality_Summary.Trends;
 with Aqs_Fixtures;
 with Aqs_Schema;
 with Project_Tools.Files;
@@ -1402,10 +1404,54 @@ package body Aqs_Suite is
             end loop;
          end;
       end;
+      --  Each report compares a project with its baseline at most once, and only when it shows regressions.
+      declare
+         function Comparisons_For (Arguments : String) return Natural is
+            Before : constant Natural := Ada_Quality_Summary.Trends.Comparisons;
+            Result : constant Ada_Quality_Summary.CLI.Outcome := Report (Database, Arguments);
+         begin
+            Expect (Exit_Of (Result) = 0, Arguments & " succeeds");
+            return Ada_Quality_Summary.Trends.Comparisons - Before;
+         end Comparisons_For;
+      begin
+         Expect (Comparisons_For ("summary") = 3, "the summary compares each of three projects once");
+         Expect (Comparisons_For ("projects") = 3, "projects compares each project once");
+         Expect (Comparisons_For ("regressions") = 3, "regressions compares each project once");
+         Expect (Comparisons_For ("project|alpha") = 1, "a project report compares one project once");
+         Expect (Comparisons_For ("history|alpha") = 1, "a history report compares one project once");
+         Expect (Comparisons_For ("indicators") = 0, "indicators makes no comparison");
+         Expect (Comparisons_For ("problems") = 0, "problems makes no comparison");
+         Expect (Comparisons_For ("trends") = 0, "trends makes no baseline comparison");
+      end;
+      --  Every positive identity parses, however many digits it has; nothing beyond Positive'Last does.
+      declare
+         use Ada_Quality_Summary.Filtering;
+         Id   : Natural;
+         Last : constant String := Ada.Strings.Fixed.Trim (Positive'Image (Positive'Last), Ada.Strings.Left);
+      begin
+         Expect (Parse_Project_Id ("7", Id) and then Id = 7, "a small identity parses");
+         Expect (Parse_Project_Id ("1000000000", Id) and then Id = 1_000_000_000, "a ten-digit identity parses");
+         Expect (Parse_Project_Id (Last, Id) and then Id = Positive'Last, "Positive'Last parses");
+         Expect (not Parse_Project_Id (Last & "0", Id) and then Id = 0,
+                 "a value beyond Positive'Last is not an identity");
+         Expect (not Parse_Project_Id ([1 .. 40 => '9'], Id) and then Id = 0,
+                 "a very long number is rejected without overflow");
+         Expect (not Parse_Project_Id ("0", Id) and then Id = 0, "zero is not an identity");
+         Expect (not Parse_Project_Id ("12a", Id) and then Id = 0
+                   and then not Parse_Project_Id ("", Id) and then Id = 0,
+                 "only digits form an identity");
+      end;
    end Properties;
 
    procedure Display is
       package T renames Ada_Quality_Summary.Terminal;
+      type Text_Access is access constant String;
+      type Text_List is array (Positive range <>) of Text_Access;
+      Narrow_Widths   : constant Text_List := [new String'("1"), new String'("4"), new String'("19")];
+      Narrow_Commands : constant Text_List :=
+        [new String'("summary"), new String'("projects"), new String'("project|alpha"), new String'("indicators"),
+         new String'("indicator|TST-03"), new String'("problems"), new String'("regressions"), new String'("trends"),
+         new String'("history|alpha")];
       Wide : constant String := Character'Val (16#E6#) & Character'Val (16#BC#) & Character'Val (16#A2#);
       Mark : constant String := "e" & Character'Val (16#CC#) & Character'Val (16#81#);
       Red  : constant String := Character'Val (27) & "[31mred" & Character'Val (27) & "[0m";
@@ -1425,6 +1471,33 @@ package body Aqs_Suite is
       Expect (T.Detect_Width (0) in 1 .. 500, "a detected width is bounded");
       Set_Env ("COLUMNS", "9999");
       Expect (T.Detect_Width (0) <= 500, "the maximum width is enforced");
+      for Narrow of Narrow_Widths loop
+         Set_Env ("COLUMNS", Narrow.all);
+         Expect (T.Detect_Width (0) >= Ada_Quality_Summary.Options.Minimum_Width,
+                 "a detected width of " & Narrow.all & " is raised to the minimum");
+      end loop;
+      --  A child process writes to a pipe, so it takes its width from COLUMNS.
+      Set_Env ("COLUMNS", "1");
+      declare
+         Database : constant String := Standard_Database ("narrow");
+      begin
+         for Command of Narrow_Commands loop
+            declare
+               Result : constant Process_Result := Spawn ("--database|" & Database & "|" & Command.all);
+               Text   : constant String := To_String (Result.Output);
+               Start  : Positive := Text'First;
+            begin
+               Expect (Result.Status = 0, Command.all & " succeeds at COLUMNS=1");
+               for Index in Text'Range loop
+                  if Text (Index) = ASCII.LF then
+                     Expect (T.Display_Width (Text (Start .. Index - 1)) <= Ada_Quality_Summary.Options.Minimum_Width,
+                             Command.all & " fits the minimum width: " & Text (Start .. Index - 1));
+                     Start := Index + 1;
+                  end if;
+               end loop;
+            end;
+         end loop;
+      end;
       Clear_Env ("COLUMNS");
       Set_Env ("LC_ALL", "C");
       Expect (not T.Unicode_Locale, "C locale is ASCII-only");

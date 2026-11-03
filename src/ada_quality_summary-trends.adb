@@ -54,6 +54,10 @@ package body Ada_Quality_Summary.Trends is
       return Result;
    end Completed_Only;
 
+   Comparison_Count : Natural := 0;
+
+   function Comparisons return Natural is (Comparison_Count);
+
    procedure Regressions
      (Data       : Repository.Snapshot;
       Project_Id : Positive;
@@ -62,6 +66,7 @@ package body Ada_Quality_Summary.Trends is
    is
       Current_Id : constant Natural := Repository.Current_Run (Data, Project_Id);
    begin
+      Comparison_Count := Comparison_Count + 1;
       Baseline := (Project_Id => Project_Id, others => <>);
       Changes.Clear;
       if Current_Id = 0 then

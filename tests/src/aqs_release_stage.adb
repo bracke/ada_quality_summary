@@ -130,7 +130,7 @@ begin
      (Staged_Manifest,
       [To_Unbounded_String ("ada_quality"), To_Unbounded_String ("project_tools"),
        To_Unbounded_String ("terminal_styles"), To_Unbounded_String ("messages"), To_Unbounded_String ("jsonlib"),
-       To_Unbounded_String ("humanize")]);
+       To_Unbounded_String ("humanize"), To_Unbounded_String ("hostkit")]);
    Project_Tools.Alire_Manifests.Write_Build_Manifest_Overlay
      (Staged_Manifest, Project_Tools.Files.Join (Stage, "alire.build.toml"), To_String (Build_Pins));
    Project_Tools.Alire_Manifests.Require_Build_Overlay

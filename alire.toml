@@ -32,6 +32,9 @@ jsonlib = "*"
 [[depends-on]]
 humanize = "*"
 
+[[depends-on]]
+hostkit = "*"
+
 [build-profiles]
 "*" = "development"
 
@@ -61,6 +64,9 @@ jsonlib = { path = "../jsonlib" }
 
 [[pins]]
 humanize = { path = "../humanize" }
+
+[[pins]]
+hostkit = { path = "../hostkit" }
 
 [[pins]]
 database = { path = "../database" }

@@ -74,6 +74,11 @@ package Ada_Quality_Summary.Trends is
    --  @param Baseline Baseline selection.
    --  @param Changes Regressions classified by Ada_Quality.History.Compare.
 
+   function Comparisons return Natural;
+   --  Count the baseline comparisons Regressions has made in this program, so tests can show that a report compares
+   --  each project at most once.
+   --  @return Calls of Regressions so far.
+
    function History
      (Data : Ada_Quality_Summary.Repository.Snapshot; Project_Id : Positive;
       Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound; Undated : out Natural)
