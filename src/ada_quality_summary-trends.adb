@@ -214,8 +214,8 @@ package body Ada_Quality_Summary.Trends is
             Included  : Natural := 0;
             Eligible  : Natural := 0;
          begin
-            --  Ada_Quality.History.Metric_Trend uses the last element as its comparison reference. Passing only
-            --  completed runs makes that reference the current assessment rather than a newer unfinished run.
+            --  Ada_Quality.History.Metric_Trend anchors the series on the latest completed run's measurement
+            --  semantics. Passing only completed runs keeps that reference the current assessment.
             if not Completed.Is_Empty then
                Points := Ada_Quality.History.Metric_Trend
                  (Completed, Repository.Measurements (Data, Project.Project_Id), Indicator);

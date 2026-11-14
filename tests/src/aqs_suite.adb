@@ -685,8 +685,11 @@ package body Aqs_Suite is
                Proj : constant String := Json (Database, "project|alpha");
             begin
                Expect_Equal (Value (Text, "data.series[2].indicator_id"), """SRC-01""", "series in registry order");
-               Expect_Equal (Value (Text, "data.series[2].excluded_observations"), "1",
-                             "the unavailable measurement is excluded and counted");
+               --  The current measurement is the series reference; with it unavailable, neither observation is
+               --  comparable, so both are excluded and counted.
+               Expect_Equal (Value (Text, "data.series[2].excluded_observations"), "2",
+                             "the unavailable reference excludes every observation");
+               Expect_Equal (Image (Count_Of (Text, "data.series[2].points")), "0", "no mixed or orphaned points");
                Expect_Equal (Value (Proj, "data.indicators[13].measurement.kind"), """unavailable""", "tagged");
                Expect_Equal (Value (Proj, "data.indicators[13].measurement.reason"), """tool unavailable""",
                              "the explanation is preserved");

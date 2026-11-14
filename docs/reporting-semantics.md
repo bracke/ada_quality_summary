@@ -55,7 +55,9 @@ baseline the status is `no_baseline` and no regression is reported.
 ## Trends
 
 Numeric series come from `Ada_Quality.History.Metric_Trend`, called per project with the completed runs only, so the
-reference is the current assessment rather than a newer unfinished run. A series never mixes measurement kinds; the
+reference is the current assessment rather than a newer unfinished run. Upstream anchors each series on the
+measurement semantics of that reference: earlier runs contribute only when they measured the indicator the same way,
+and when the current measurement is unavailable the series is empty. A series never mixes measurement kinds; the
 unit comes from `Ada_Quality.Indicators.Measurement_Unit`, and decimal values stay exact basis points. Projects without
 comparable numeric evidence are counted as excluded, and completed runs whose measurement was not comparable are
 counted as excluded observations.
