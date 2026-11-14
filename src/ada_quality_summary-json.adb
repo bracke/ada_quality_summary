@@ -280,6 +280,8 @@ package body Ada_Quality_Summary.JSON is
          Put (Object, "status", Str (Trends.Image (Info.Status)));
          Put (Object, "current_run_id", Id_Or_Null (Info.Current_Run_Id));
          Put (Object, "baseline_run_id", Id_Or_Null (Info.Baseline_Run_Id));
+         Put (Object, "comparison", Str (Trends.Image (Info.Comparison)));
+         Put (Object, "policy_changed", Bool (Info.Policy_Changed));
          for Run of Info.Excluded loop
             declare
                Entry_Object : constant Node := Doc.New_Object;

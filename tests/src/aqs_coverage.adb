@@ -5,7 +5,9 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with Interfaces;
+with GNAT.OS_Lib;
 with Ada_Quality.Checks;
+with Ada_Quality.Coverage;
 with Project_Tools.Files;
 with Project_Tools.Gcov;
 with Project_Tools.Processes;
@@ -14,8 +16,10 @@ with Project_Tools.Processes;
 --
 --  Builds the instrumented suite and executables from tests/coverage.gpr, runs the complete AUnit suite with the
 --  instrumented executables substituted for spawned processes, measures every production unit in src/ with gcov,
---  and writes coverage/gcov-summary.txt in the gcov-production-lines-v2 evidence format consumed by Ada Quality's
---  TST-03. Exits with failure when the suite fails, a unit is uninstrumented, or coverage is below 90 percent.
+--  and writes coverage/gcov-summary.txt in the gcov-production-lines-v3 evidence format consumed by Ada Quality's
+--  TST-03: gcov-dump independently lists the sources the compiler notes cover, and every one of them must have a
+--  gcov record. Exits with failure when the suite fails, a unit is uninstrumented or incompletely recorded, or
+--  coverage is below 90 percent.
 procedure Aqs_Coverage is
    use Ada.Strings.Unbounded;
    package P renames Project_Tools.Processes;
@@ -93,6 +97,56 @@ procedure Aqs_Coverage is
       return To_String (Result);
    end Per_File;
 
+   --  Run gcov-dump on one unit's notes and keep the note inventory Ada Quality reconciles against: the header line
+   --  and the function records, which name the sources holding executable lines. The full dump runs to megabytes, so
+   --  it goes to a scratch file read line by line rather than through a captured string.
+   function Note_Inventory (Notes : String; Inventory : out Unbounded_String) return Boolean is
+      Dump_File : constant String := Project_Tools.Files.Join (Objects, "gcov-dump.txt");
+      Caller    : constant String := Ada.Directories.Current_Directory;
+      Arguments : GNAT.OS_Lib.Argument_List :=
+        [new String'("exec"), new String'("--"), new String'("gcov-dump"), new String'(Notes)];
+      Success   : Boolean;
+      Status    : Integer;
+      File      : Ada.Text_IO.File_Type;
+      First     : Boolean := True;
+   begin
+      Inventory := Null_Unbounded_String;
+      Ada.Directories.Set_Directory (Tests);
+      GNAT.OS_Lib.Spawn (Alr, Arguments, Dump_File, Success, Status, Err_To_Out => False);
+      Ada.Directories.Set_Directory (Caller);
+      for Item of Arguments loop
+         GNAT.OS_Lib.Free (Item);
+      end loop;
+      if not Success or else Status /= 0 then
+         return False;
+      end if;
+      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Dump_File);
+      while not Ada.Text_IO.End_Of_File (File) loop
+         declare
+            Line : constant String := Ada.Text_IO.Get_Line (File);
+         begin
+            if First or else Ada.Strings.Fixed.Index (Line, "FUNCTION") > 0 then
+               Append (Inventory, Line & LF);
+            end if;
+            First := False;
+         end;
+      end loop;
+      Ada.Text_IO.Close (File);
+      Ada.Directories.Delete_File (Dump_File);
+      return True;
+   end Note_Inventory;
+
+   --  The body and specification of one production unit, as absolute paths, empty when absent.
+   function Unit_Of (Stem : String) return Ada_Quality.Coverage.Production_Unit is
+      function Path (Extension : String) return Unbounded_String is
+         File : constant String := Project_Tools.Files.Join (Root, "src/" & Stem & Extension);
+      begin
+         return (if Ada.Directories.Exists (File) then To_Unbounded_String (File) else Null_Unbounded_String);
+      end Path;
+   begin
+      return (Stem => To_Unbounded_String (Stem), Body_Path => Path (".adb"), Spec_Path => Path (".ads"));
+   end Unit_Of;
+
    procedure Remove_Profiles is
       Search : Ada.Directories.Search_Type;
       Item   : Ada.Directories.Directory_Entry_Type;
@@ -149,9 +203,17 @@ procedure Aqs_Coverage is
            Alr_Exec ("gcov", Tests, [P.Argument ("gcov"), P.Argument ("-n"), P.Argument ("-o"),
                                      P.Argument (Objects), P.Argument (Notes)]);
          Records : constant String := Per_File (To_String (Run.Output));
+         Inventory : Unbounded_String;
       begin
          if Run.Status /= 0 then
             Fail ("gcov failed for " & Stem);
+            return False;
+         elsif not Note_Inventory (Notes, Inventory) then
+            Fail ("gcov-dump failed for " & Stem);
+            return False;
+         elsif not Ada_Quality.Coverage.Has_Complete_Source_Records (Records, To_String (Inventory), Unit_Of (Stem))
+         then
+            Fail ("gcov output is missing a production source in unit " & Stem);
             return False;
          end if;
          for Is_Spec in Boolean loop
@@ -256,7 +318,7 @@ begin
       Project_Tools.Files.Write_Text_File
         (Summary,
          "covered=" & Trim (Covered) & LF & "total=" & Trim (Total) & LF & "complete=true" & LF &
-         "inventory=gcov-production-lines-v2" & LF & "source_fingerprint=" & Source & LF &
+         "inventory=gcov-production-lines-v3" & LF & "source_fingerprint=" & Source & LF &
          "toolchain_fingerprint=" & Digest (To_String (Toolchain.Output)) & LF & To_String (Details));
       Report (Covered, Total);
    end;

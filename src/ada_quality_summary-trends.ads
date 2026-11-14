@@ -1,4 +1,5 @@
 with Ada.Containers.Vectors;
+with Ada_Quality.History;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Options;
@@ -6,16 +7,17 @@ with Ada_Quality_Summary.Repository;
 
 --  Thin adapter over Ada_Quality.History: baseline selection, regression comparison, histories, and metric trends.
 --
---  Every compatibility and classification decision is delegated to Ada_Quality.History. This package adds the
---  owning project identity, explanations for skipped predecessors, and reporting filters.
+--  Every baseline, compatibility, and classification decision is delegated to Ada_Quality.History, which the
+--  Ada Quality `regressions` command uses too. This package adds the owning project identity, explanations for
+--  skipped predecessors, and reporting filters.
 package Ada_Quality_Summary.Trends is
    --  Thin adapter over Ada_Quality.History.
 
    type Baseline_Status is (No_Current_Assessment, No_Baseline, Compared);
    --  Outcome of baseline selection for one project.
    --  @enum No_Current_Assessment The project has no completed assessment.
-   --  @enum No_Baseline No earlier compatible completed assessment exists.
-   --  @enum Compared The current assessment was compared with its compatible baseline.
+   --  @enum No_Baseline No comparable earlier assessment exists; the comparison status gives the reason.
+   --  @enum Compared The current assessment was compared with its selected baseline.
 
    function Image (Status : Baseline_Status) return String;
    --  Return the stable spelling.
@@ -27,6 +29,11 @@ package Ada_Quality_Summary.Trends is
    --  @enum Missing_Source_Fingerprint A source fingerprint is absent.
    --  @enum Policy_Changed The policy fingerprint differs or is absent.
    --  @enum Toolchain_Changed The toolchain fingerprint differs or is absent.
+
+   function Image (Status : Ada_Quality.History.Comparison_Status) return String;
+   --  Return the stable spelling of a baseline-selection decision made by Ada_Quality.History.Select_Comparison.
+   --  @param Status Selection decision.
+   --  @return Lowercase underscore spelling, such as `comparison_available` or `toolchain_changed`.
 
    function Image (Reason : Exclusion_Reason) return String;
    --  Return the stable spelling.
@@ -50,6 +57,8 @@ package Ada_Quality_Summary.Trends is
       Status          : Baseline_Status := No_Current_Assessment;
       Current_Run_Id  : Natural := 0;
       Baseline_Run_Id : Natural := 0;
+      Comparison      : Ada_Quality.History.Comparison_Status := Ada_Quality.History.No_Assessments;
+      Policy_Changed  : Boolean := False;
       Excluded        : Excluded_Run_Vectors.Vector;
    end record;
    --  Baseline selection for one project.
@@ -57,6 +66,9 @@ package Ada_Quality_Summary.Trends is
    --  @field Status Outcome.
    --  @field Current_Run_Id Current completed assessment, or zero.
    --  @field Baseline_Run_Id Selected baseline, or zero.
+   --  @field Comparison Ada_Quality.History.Select_Comparison decision for the current assessment.
+   --  @field Policy_Changed Whether the baseline was assessed under a different policy, so changes the policy caused
+   --  are classified as policy-induced.
    --  @field Excluded Incompatible completed assessments newer than the baseline.
 
    package Baseline_Info_Vectors is new Ada.Containers.Vectors
@@ -68,7 +80,7 @@ package Ada_Quality_Summary.Trends is
       Project_Id : Positive;
       Baseline   : out Baseline_Info;
       Changes    : out Ada_Quality_Summary.Model.Regression_Summary_Vectors.Vector);
-   --  Compare a project's current assessment with its compatible baseline.
+   --  Compare a project's current assessment with the baseline Ada_Quality.History.Select_Comparison selects.
    --  @param Data Snapshot.
    --  @param Project_Id Project.
    --  @param Baseline Baseline selection.

@@ -68,7 +68,9 @@ procedure Aqs_Check_All is
    procedure Check_Coverage_Evidence is
       Evidence : constant String := Project_Tools.Files.Join (Root, "coverage/gcov-summary.txt");
    begin
-      if Project_Tools.Files.Value_Of (Evidence, "complete") /= "true" then
+      if Project_Tools.Files.Value_Of (Evidence, "complete") /= "true" or else
+        Project_Tools.Files.Value_Of (Evidence, "inventory") /= "gcov-production-lines-v3"
+      then
          Project_Tools.Release_Checks.Fail ("coverage evidence is incomplete; run tests/bin/aqs_coverage");
       end if;
       declare

@@ -1,7 +1,6 @@
 with Ada.Calendar;
 with Ada.Containers.Ordered_Sets;
 with Ada.Strings.Unbounded;
-with Ada_Quality.History;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
@@ -12,6 +11,7 @@ package body Ada_Quality_Summary.Trends is
    use Ada_Quality.Types;
    use Ada_Quality_Summary.Model;
    use type Ada.Calendar.Time;
+   use type Ada_Quality.History.Comparison_Status;
    subtype Unbounded_String is Ada.Strings.Unbounded.Unbounded_String;
 
    package Repository renames Ada_Quality_Summary.Repository;
@@ -21,6 +21,16 @@ package body Ada_Quality_Summary.Trends is
          when No_Current_Assessment => "no_current_assessment",
          when No_Baseline => "no_baseline",
          when Compared => "compared");
+
+   function Image (Status : Ada_Quality.History.Comparison_Status) return String is
+     (case Status is
+         when Ada_Quality.History.Comparison_Available => "comparison_available",
+         when Ada_Quality.History.No_Assessments => "no_assessments",
+         when Ada_Quality.History.No_Baseline => "no_baseline",
+         when Ada_Quality.History.Current_Incomplete => "current_incomplete",
+         when Ada_Quality.History.No_Completed_Baseline => "no_completed_baseline",
+         when Ada_Quality.History.Toolchain_Changed => "toolchain_changed",
+         when Ada_Quality.History.No_Compatible_Baseline => "no_compatible_baseline");
 
    function Image (Reason : Exclusion_Reason) return String is
      (case Reason is
@@ -40,6 +50,21 @@ package body Ada_Quality_Summary.Trends is
       end if;
       return Toolchain_Changed;
    end Reason_For;
+
+   --  The history through the current assessment, so that Ada_Quality.History.Select_Comparison, which decides for
+   --  the last run it is given, decides for the current assessment rather than for a newer unfinished run.
+   function Through (Items : Ada_Quality.Storage.History_Vectors.Vector; Current_Id : Positive)
+      return Ada_Quality.Storage.History_Vectors.Vector
+   is
+      Result : Ada_Quality.Storage.History_Vectors.Vector;
+   begin
+      for Item of Items loop
+         if Item.Id <= Current_Id then
+            Result.Append (Item);
+         end if;
+      end loop;
+      return Result;
+   end Through;
 
    function Completed_Only (Items : Ada_Quality.Storage.History_Vectors.Vector)
       return Ada_Quality.Storage.History_Vectors.Vector
@@ -95,15 +120,14 @@ package body Ada_Quality_Summary.Trends is
       Baseline.Current_Run_Id := Current_Id;
       declare
          Items        : constant Ada_Quality.Storage.History_Vectors.Vector :=
-           Repository.History_Items (Data, Project_Id);
-         Baseline_Id  : constant Natural := Ada_Quality.History.Baseline_Id (Items, Current_Id);
-         Current_Item : Ada_Quality.Storage.History_Item := Items.First_Element;
+           Through (Repository.History_Items (Data, Project_Id), Current_Id);
+         Selection    : constant Ada_Quality.History.Comparison_Selection :=
+           Ada_Quality.History.Select_Comparison (Items);
+         Baseline_Id  : constant Natural := Selection.Baseline_Id;
+         Current_Item : constant Ada_Quality.Storage.History_Item := Items.Last_Element;
       begin
-         for Item of Items loop
-            if Item.Id = Current_Id then
-               Current_Item := Item;
-            end if;
-         end loop;
+         Baseline.Comparison := Selection.Status;
+         Baseline.Policy_Changed := Selection.Policy_Changed;
          for Index in reverse Items.First_Index .. Items.Last_Index loop
             declare
                Item : constant Ada_Quality.Storage.History_Item := Items (Index);
@@ -116,7 +140,7 @@ package body Ada_Quality_Summary.Trends is
                end if;
             end;
          end loop;
-         if Baseline_Id = 0 then
+         if Selection.Status /= Ada_Quality.History.Comparison_Available then
             Baseline.Status := No_Baseline;
             return;
          end if;

@@ -761,6 +761,21 @@
         "baseline_run_id": {
           "$ref": "#/$defs/optional_id"
         },
+        "comparison": {
+          "type": "string",
+          "enum": [
+            "comparison_available",
+            "no_assessments",
+            "no_baseline",
+            "current_incomplete",
+            "no_completed_baseline",
+            "toolchain_changed",
+            "no_compatible_baseline"
+          ]
+        },
+        "policy_changed": {
+          "type": "boolean"
+        },
         "excluded_runs": {
           "type": "array",
           "items": {
@@ -792,6 +807,8 @@
         "status",
         "current_run_id",
         "baseline_run_id",
+        "comparison",
+        "policy_changed",
         "excluded_runs"
       ],
       "additionalProperties": false

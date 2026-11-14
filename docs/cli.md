@@ -17,7 +17,7 @@ both `--name value` and `--name=value`. The program never prompts and never uses
 | `indicators` | Indicator matrix across projects | — |
 | `indicator ID` | One indicator across projects | required, e.g. `TST-03` |
 | `problems` | Outstanding findings | — |
-| `regressions` | Regressions against compatible baselines | — |
+| `regressions` | Regressions against the baseline Ada Quality selects | — |
 | `trends` | Daily last-known states and numeric metric series | — |
 | `history PROJECT` | All runs of one project | required |
 | `help [COMMAND]` | Usage | optional |

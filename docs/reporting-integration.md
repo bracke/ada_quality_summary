@@ -71,14 +71,15 @@ images, invalid typed measurements, ownership mismatches, and inconsistent appli
 ## History Contracts
 
 `Ada_Quality.History.Compatible` requires completed runs from one project, nonempty source identities, and equal policy
-and toolchain fingerprints. `Baseline_Id` selects the newest earlier compatible run. `Compare` owns the established
+and toolchain fingerprints. `Select_Comparison` selects the baseline, falling back to a policy-changed predecessor, and
+names the reason when none exists. `Compare` owns the established
 regression classifications, and `Metric_Trend` supplies run-ID-ordered numeric values. Reporting must adapt these APIs,
 not reproduce their algorithms.
 
 Two integration constraints require upstream attention:
 
-- `Metric_Trend` uses the last history element as its reference. A newer running or interrupted run can therefore
-  suppress an otherwise valid completed series.
+- `Metric_Trend` originally used the last history element as its reference, so a newer running or interrupted run
+  could suppress a valid completed series. It now anchors on the latest completed run's measurement semantics.
 - Measurement units are neither represented by `Measurement_Value` nor persisted, so the requested unit-preserving
   trend model is not currently implementable.
 

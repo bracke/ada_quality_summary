@@ -54,7 +54,9 @@ database snapshot the report was computed from.
   `fingerprint`; path and line are `null` when unavailable.
 - **regression**: `project_id`, `current_run_id`, `baseline_run_id`, `indicator_id`, `kind`, `before`, `after`.
 - **baseline**: `project_id`, `status` (`no_current_assessment`, `no_baseline`, `compared`), `current_run_id`,
-  `baseline_run_id`, `excluded_runs` with `run_id` and `reason`.
+  `baseline_run_id`, `comparison` (the `Ada_Quality.History.Select_Comparison` decision: `comparison_available`,
+  `no_assessments`, `no_baseline`, `current_incomplete`, `no_completed_baseline`, `toolchain_changed`,
+  `no_compatible_baseline`), `policy_changed`, and `excluded_runs` with `run_id` and `reason`.
 - **run**: `run_id`, `state`, fingerprints, `started_at`, `finished_at` (`null` when not persisted), `quality`
   (`null` unless completed).
 

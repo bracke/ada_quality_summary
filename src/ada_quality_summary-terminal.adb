@@ -451,9 +451,10 @@ package body Ada_Quality_Summary.Terminal is
          when Trends.No_Current_Assessment =>
             Note (Out_Text, Name & ": " & L ("baseline.no_current"));
          when Trends.No_Baseline =>
-            Note (Out_Text, Name & ": " & L ("baseline.none"));
+            Note (Out_Text, Name & ": " & L ("baseline.none", L ("comparison." & Trends.Image (Info.Comparison))));
          when Trends.Compared =>
-            Note (Out_Text, Name & ": " & L ("baseline.compared", Num (Info.Baseline_Run_Id)));
+            Note (Out_Text, Name & ": " & L ((if Info.Policy_Changed then "baseline.policy_changed"
+                                               else "baseline.compared"), Num (Info.Baseline_Run_Id)));
       end case;
       for Run of Info.Excluded loop
          Note (Out_Text, "  " & Ada_Quality_Summary.Text.Message
@@ -697,7 +698,7 @@ package body Ada_Quality_Summary.Terminal is
                   Name := P.Name;
                end if;
             end loop;
-            if Info.Status /= Trends.Compared or else not Info.Excluded.Is_Empty or else
+            if Info.Status /= Trends.Compared or else Info.Policy_Changed or else not Info.Excluded.Is_Empty or else
               Out_Text.Style.Layout = Detailed_Layout
             then
                Baseline_Lines (Out_Text, Info, To_String (Name));

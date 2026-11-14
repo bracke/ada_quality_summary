@@ -46,7 +46,7 @@ disabled, and removed projects, compatible and incompatible histories, and runni
 | AQS_T018 | Removed project | AQS_T043 | Large registered-project collection |
 | AQS_T019 | Ambiguous basename | AQS_T044 | All 33 indicators and their categories |
 | AQS_T020 | Unknown indicator | AQS_T045 | No assessment tool spawned (PATH traps) |
-| AQS_T021 | Incompatible baseline | AQS_T046 | Database unchanged after every report |
+| AQS_T021 | Incompatible baseline (policy and toolchain changes) | AQS_T046 | Database unchanged after every report |
 | AQS_T022 | Pass to violation | AQS_T047 | Missing timestamps |
 | AQS_T023 | Pass to unknown | AQS_T048 | `--limit` keeps totals |
 | AQS_T024 | Metric unavailable | AQS_T049 | Unknown option exits 2 |
@@ -71,8 +71,9 @@ unproved check in `Ada_Quality_Summary.Rules.Counting` fails the release. The pr
 
 `tests/bin/aqs_coverage` builds `tests/coverage.gpr` with gcov instrumentation, runs the full suite with the
 instrumented executables substituted for spawned processes (`AQS_BINARY`, `AQS_TOOLS`), measures every unit in
-`src/`, and writes `coverage/gcov-summary.txt` in the `gcov-production-lines-v2` format, bound to the source and
-toolchain fingerprints Ada Quality's TST-03 checks. It fails below 90 percent. Set `AQS_TIMING` to print per-test
+`src/`, and writes `coverage/gcov-summary.txt` in the `gcov-production-lines-v3` format, bound to the source and
+toolchain fingerprints Ada Quality's TST-03 checks. For v3, `gcov-dump` lists the sources each unit's compiler notes
+cover, and `Ada_Quality.Coverage.Has_Complete_Source_Records` requires a gcov record for every one of them. It fails below 90 percent. Set `AQS_TIMING` to print per-test
 durations.
 
 Ada Quality's own reporting tests live in `../ada_quality/tests/src/ada_quality_reporting_tests.adb` and run with

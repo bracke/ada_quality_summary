@@ -84,7 +84,15 @@ package body Ada_Quality_Summary.Text is
      "en.label.history_counts = Completed {completed}, running {running}, interrupted {interrupted}," &
        " invalid {invalid}" & LF &
      "en.label.baseline.compared = compared with baseline run {value}" & LF &
-     "en.label.baseline.none = no compatible baseline" & LF &
+     "en.label.baseline.policy_changed = compared with baseline run {value} under a changed policy" & LF &
+     "en.label.baseline.none = no comparable baseline: {value}" & LF &
+     "en.label.comparison.no_baseline = no earlier assessment" & LF &
+     "en.label.comparison.no_completed_baseline = the previous assessment did not complete" & LF &
+     "en.label.comparison.toolchain_changed = the toolchain changed" & LF &
+     "en.label.comparison.no_compatible_baseline = no compatible earlier assessment" & LF &
+     "en.label.comparison.comparison_available = available" & LF &
+     "en.label.comparison.no_assessments = no assessments" & LF &
+     "en.label.comparison.current_incomplete = the current assessment did not complete" & LF &
      "en.label.baseline.no_current = no completed assessment" & LF &
      "en.label.baseline.excluded = skipped run {run}: {reason}" & LF &
      "en.label.reason.missing_source_fingerprint = source fingerprint missing" & LF &
