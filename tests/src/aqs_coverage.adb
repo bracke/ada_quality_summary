@@ -4,10 +4,10 @@ with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada.Text_IO;
-with Interfaces;
 with GNAT.OS_Lib;
 with Ada_Quality.Checks;
 with Ada_Quality.Coverage;
+with Aqs_Evidence;
 with Project_Tools.Files;
 with Project_Tools.Gcov;
 with Project_Tools.Processes;
@@ -44,23 +44,6 @@ procedure Aqs_Coverage is
 
    function Trim (Value : Natural) return String is
      (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Both));
-
-   --  Same FNV-1a digest Ada Quality applies to toolchain output.
-   function Digest (Text : String) return String is
-      use type Interfaces.Unsigned_64;
-      Hash   : Interfaces.Unsigned_64 := 16#CBF29CE484222325#;
-      Hex    : constant String := "0123456789abcdef";
-      Result : String (1 .. 16);
-   begin
-      for C of Text loop
-         Hash := (Hash xor Interfaces.Unsigned_64 (Character'Pos (C))) * 16#100000001B3#;
-      end loop;
-      for J in reverse Result'Range loop
-         Result (J) := Hex (Natural (Hash and 15) + 1);
-         Hash := Interfaces.Shift_Right (Hash, 4);
-      end loop;
-      return Result;
-   end Digest;
 
    function Alr_Exec (Label, Directory : String; Items : P.Argument_Items) return P.Captured_Process is
       Arguments : P.Argument_Vectors.Vector := P.Arguments ([P.Argument ("exec"), P.Argument ("--")]);
@@ -102,18 +85,16 @@ procedure Aqs_Coverage is
    --  it goes to a scratch file read line by line rather than through a captured string.
    function Note_Inventory (Notes : String; Inventory : out Unbounded_String) return Boolean is
       Dump_File : constant String := Project_Tools.Files.Join (Objects, "gcov-dump.txt");
-      Caller    : constant String := Ada.Directories.Current_Directory;
       Arguments : GNAT.OS_Lib.Argument_List :=
-        [new String'("exec"), new String'("--"), new String'("gcov-dump"), new String'(Notes)];
+        [new String'("-C"), new String'(Tests), new String'("exec"), new String'("--"), new String'("gcov-dump"),
+         new String'(Notes)];
       Success   : Boolean;
       Status    : Integer;
       File      : Ada.Text_IO.File_Type;
       First     : Boolean := True;
    begin
       Inventory := Null_Unbounded_String;
-      Ada.Directories.Set_Directory (Tests);
       GNAT.OS_Lib.Spawn (Alr, Arguments, Dump_File, Success, Status, Err_To_Out => False);
-      Ada.Directories.Set_Directory (Caller);
       for Item of Arguments loop
          GNAT.OS_Lib.Free (Item);
       end loop;
@@ -136,16 +117,6 @@ procedure Aqs_Coverage is
       return True;
    end Note_Inventory;
 
-   --  The body and specification of one production unit, as absolute paths, empty when absent.
-   function Unit_Of (Stem : String) return Ada_Quality.Coverage.Production_Unit is
-      function Path (Extension : String) return Unbounded_String is
-         File : constant String := Project_Tools.Files.Join (Root, "src/" & Stem & Extension);
-      begin
-         return (if Ada.Directories.Exists (File) then To_Unbounded_String (File) else Null_Unbounded_String);
-      end Path;
-   begin
-      return (Stem => To_Unbounded_String (Stem), Body_Path => Path (".adb"), Spec_Path => Path (".ads"));
-   end Unit_Of;
 
    procedure Remove_Profiles is
       Search : Ada.Directories.Search_Type;
@@ -188,8 +159,11 @@ procedure Aqs_Coverage is
       return True;
    end Run_Instrumented_Suite;
 
-   --  Measure the executable lines of one production unit, its body and its specification, from its gcov notes.
-   function Measure_Unit (Stem : String; Unit_Covered, Unit_Total : out Natural) return Boolean is
+   --  Measure the executable lines of one production unit, its body, specification, and subunits, from its notes.
+   function Measure_Unit
+     (Unit : Ada_Quality.Coverage.Production_Unit; Unit_Covered, Unit_Total : out Natural) return Boolean
+   is
+      Stem  : constant String := To_String (Unit.Stem);
       Notes : constant String := Project_Tools.Files.Join (Objects, Stem & ".gcno");
    begin
       Unit_Covered := 0;
@@ -199,11 +173,21 @@ procedure Aqs_Coverage is
          return False;
       end if;
       declare
-         Run     : constant P.Captured_Process :=
+         Run       : constant P.Captured_Process :=
            Alr_Exec ("gcov", Tests, [P.Argument ("gcov"), P.Argument ("-n"), P.Argument ("-o"),
                                      P.Argument (Objects), P.Argument (Notes)]);
-         Records : constant String := Per_File (To_String (Run.Output));
+         Records   : constant String := Per_File (To_String (Run.Output));
          Inventory : Unbounded_String;
+
+         procedure Include (Source : Unbounded_String) is
+            One : Project_Tools.Gcov.Coverage_Summary;
+         begin
+            if Length (Source) > 0 and then Ada_Quality.Coverage.Has_Source_Record (Records, To_String (Source)) then
+               One := Project_Tools.Gcov.Parse_Lines_Executed_Output (Records, To_String (Source));
+               Unit_Covered := Unit_Covered + Project_Tools.Gcov.Covered_Lines (One);
+               Unit_Total := Unit_Total + Project_Tools.Gcov.Total_Lines (One);
+            end if;
+         end Include;
       begin
          if Run.Status /= 0 then
             Fail ("gcov failed for " & Stem);
@@ -211,66 +195,44 @@ procedure Aqs_Coverage is
          elsif not Note_Inventory (Notes, Inventory) then
             Fail ("gcov-dump failed for " & Stem);
             return False;
-         elsif not Ada_Quality.Coverage.Has_Complete_Source_Records (Records, To_String (Inventory), Unit_Of (Stem))
-         then
+         elsif not Ada_Quality.Coverage.Has_Complete_Source_Records (Records, To_String (Inventory), Unit) then
             Fail ("gcov output is missing a production source in unit " & Stem);
             return False;
          end if;
-         for Is_Spec in Boolean loop
-            declare
-               Extension   : constant String := (if Is_Spec then ".ads" else ".adb");
-               Source_File : constant String := Project_Tools.Files.Join (Root, "src/" & Stem & Extension);
-               One         : Project_Tools.Gcov.Coverage_Summary;
-            begin
-               if Ada.Directories.Exists (Source_File) and then
-                 Ada.Strings.Fixed.Index (Records, Source_File & "'") > 0
-               then
-                  One := Project_Tools.Gcov.Parse_Lines_Executed_Output (Records, Source_File);
-                  Unit_Covered := Unit_Covered + Project_Tools.Gcov.Covered_Lines (One);
-                  Unit_Total := Unit_Total + Project_Tools.Gcov.Total_Lines (One);
-               end if;
-            end;
+         Include (Unit.Body_Path);
+         Include (Unit.Spec_Path);
+         for Source of Unit.Subunit_Paths loop
+            Include (Source);
          end loop;
       end;
       return True;
    end Measure_Unit;
 
    --  Measure every production unit in src/, each once through its body when it has one.
+   --  Measure every production unit of src/ as Ada Quality inventories them: sorted, with bodies, specifications,
+   --  and subunits, so the evidence covers exactly the sources TST-03 expects.
    function Measure_Units (Covered, Total, Units : out Natural; Details : out Unbounded_String) return Boolean is
-      Search : Ada.Directories.Search_Type;
-      Item   : Ada.Directories.Directory_Entry_Type;
    begin
       Covered := 0;
       Total := 0;
       Units := 0;
       Details := Null_Unbounded_String;
-      Ada.Directories.Start_Search
-        (Search, Project_Tools.Files.Join (Root, "src"), "*.ad?",
-         [Ada.Directories.Ordinary_File => True, others => False]);
-      while Ada.Directories.More_Entries (Search) loop
-         Ada.Directories.Get_Next_Entry (Search, Item);
+      for Unit of Ada_Quality.Coverage.Production_Units (Root) loop
          declare
-            Simple       : constant String := Ada.Directories.Simple_Name (Item);
-            Stem         : constant String := Ada.Directories.Base_Name (Simple);
+            Stem         : constant String := To_String (Unit.Stem);
             Unit_Covered : Natural;
             Unit_Total   : Natural;
          begin
-            if Ada.Directories.Extension (Simple) = "adb" or else
-              not Ada.Directories.Exists (Project_Tools.Files.Join (Root, "src/" & Stem & ".adb"))
-            then
-               if not Measure_Unit (Stem, Unit_Covered, Unit_Total) then
-                  Ada.Directories.End_Search (Search);
-                  return False;
-               end if;
-               Units := Units + 1;
-               Covered := Covered + Unit_Covered;
-               Total := Total + Unit_Total;
-               Append (Details, "file_" & Stem & "_covered=" & Trim (Unit_Covered) & LF &
-                         "file_" & Stem & "_total=" & Trim (Unit_Total) & LF);
+            if not Measure_Unit (Unit, Unit_Covered, Unit_Total) then
+               return False;
             end if;
+            Units := Units + 1;
+            Covered := Covered + Unit_Covered;
+            Total := Total + Unit_Total;
+            Append (Details, "file_" & Stem & "_covered=" & Trim (Unit_Covered) & LF &
+                      "file_" & Stem & "_total=" & Trim (Unit_Total) & LF);
          end;
       end loop;
-      Ada.Directories.End_Search (Search);
       return True;
    end Measure_Units;
 
@@ -289,15 +251,21 @@ begin
    if Root'Length = 0 then
       Fail ("cannot locate the ada_quality_summary project root");
       return;
+   elsif Alr'Length = 0 then
+      Fail ("alr is not on PATH");
+      return;
+   end if;
+   --  Evidence from an earlier run must not survive a failing one.
+   if Ada.Directories.Exists (Summary) then
+      Ada.Directories.Delete_File (Summary);
    end if;
    declare
-      Toolchain : constant P.Captured_Process :=
-        Alr_Exec ("toolchain", Root, [P.Argument ("gnatls"), P.Argument ("--version")]);
+      Toolchain : constant String := Aqs_Evidence.Toolchain_Fingerprint (Root);
       Source    : constant String := Ada_Quality.Checks.Source_Fingerprint (Root);
       Covered, Total, Units : Natural;
       Details   : Unbounded_String;
    begin
-      if Toolchain.Status /= 0 then
+      if Toolchain'Length = 0 then
          Fail ("toolchain fingerprint query failed");
          return;
       end if;
@@ -318,8 +286,8 @@ begin
       Project_Tools.Files.Write_Text_File
         (Summary,
          "covered=" & Trim (Covered) & LF & "total=" & Trim (Total) & LF & "complete=true" & LF &
-         "inventory=gcov-production-lines-v3" & LF & "source_fingerprint=" & Source & LF &
-         "toolchain_fingerprint=" & Digest (To_String (Toolchain.Output)) & LF & To_String (Details));
+         "inventory=" & Aqs_Evidence.Inventory & LF & "source_fingerprint=" & Source & LF &
+         "toolchain_fingerprint=" & Toolchain & LF & To_String (Details));
       Report (Covered, Total);
    end;
 end Aqs_Coverage;

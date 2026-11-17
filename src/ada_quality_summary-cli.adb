@@ -4,14 +4,17 @@ with Ada.Exceptions;
 with Ada.IO_Exceptions;
 with Ada.Text_IO;
 with Ada.Text_IO.Text_Streams;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.JSON;
 with Ada_Quality_Summary.Reports;
 with Ada_Quality_Summary.Repository;
 with Ada_Quality_Summary.Terminal;
+with Ada_Quality_Summary.Terminal.Environment;
 with Ada_Quality_Summary.Text;
 
 package body Ada_Quality_Summary.CLI is
    use Ada.Strings.Unbounded;
+   use Ada_Quality_Summary.Criteria;
    use Ada_Quality_Summary.Options;
    use Ada_Quality_Summary.Text;
 
@@ -20,12 +23,22 @@ package body Ada_Quality_Summary.CLI is
    function Diagnostic (Text : String) return String is
      (Message ("error.prefix", [Arg ("message", Text)]) & LF);
 
-   --  Write the complete, already rendered report as raw bytes and flush it.
-   procedure Write (Text : String) is
+   --  Write the complete, already rendered report as raw bytes and flush it. The text is streamed in slices, so
+   --  writing does not need another copy of a report that may be as large as the JSON size limit.
+   procedure Write (Text : Unbounded_String) is
+      Chunk  : constant := 65_536;
       Stream : constant Ada.Text_IO.Text_Streams.Stream_Access :=
         Ada.Text_IO.Text_Streams.Stream (Ada.Text_IO.Standard_Output);
+      First  : Positive := 1;
    begin
-      String'Write (Stream, Text);
+      while First <= Length (Text) loop
+         declare
+            Last : constant Natural := Natural'Min (Length (Text), First + Chunk - 1);
+         begin
+            String'Write (Stream, Slice (Text, First, Last));
+            First := Last + 1;
+         end;
+      end loop;
       Ada.Text_IO.Flush (Ada.Text_IO.Standard_Output);
    end Write;
 
@@ -52,38 +65,11 @@ package body Ada_Quality_Summary.CLI is
          when Help_Command => "help [COMMAND]",
          when others => Name (Command));
 
-   type Text_Access is access constant String;
+   function Usage_Of (Option : Option_Kind) return String is
+     (if Value_Name (Option) = "" then Spelling (Option) else Spelling (Option) & " " & Value_Name (Option));
 
-   type Option_Help is record
-      Spelling : Text_Access;
-      Key      : Text_Access;
-   end record;
-
-   Option_List : constant array (Positive range <>) of Option_Help :=
-     [(new String'("--database PATH"), new String'("database")),
-      (new String'("--format terminal|json"), new String'("format")),
-      (new String'("--color auto|always|never"), new String'("color")),
-      (new String'("--no-color"), new String'("no_color")),
-      (new String'("--layout compact|normal|detailed"), new String'("layout")),
-      (new String'("--width N"), new String'("width")),
-      (new String'("--include-removed"), new String'("include_removed")),
-      (new String'("--enabled-only"), new String'("enabled_only")),
-      (new String'("--project PROJECT"), new String'("project")),
-      (new String'("--status STATUS"), new String'("status")),
-      (new String'("--sort KEY"), new String'("sort")),
-      (new String'("--reverse"), new String'("reverse")),
-      (new String'("--limit N"), new String'("limit")),
-      (new String'("--since DATE"), new String'("since")),
-      (new String'("--until DATE"), new String'("until")),
-      (new String'("--pretty"), new String'("pretty")),
-      (new String'("--help"), new String'("help")),
-      (new String'("--version"), new String'("version"))];
-
-   function Accepts (Command : Command_Kind; Key : String) return Boolean is
-     (if Key in "project" | "status" then Is_Collection (Command)
-      elsif Key in "since" | "until" then Is_Historical (Command)
-      elsif Key = "sort" then (for some Sort in Sort_Name .. Sort_Key'Last => Allowed (Command, Sort))
-      else True);
+   function Option_Line (Option : Option_Kind) return String is
+     ("  " & Column (Usage_Of (Option), 36) & Message ("help.opt." & Help_Key (Option)) & LF);
 
    function Help_Text (Invocation : Options.Options) return String is
       Result : Unbounded_String;
@@ -94,8 +80,8 @@ package body Ada_Quality_Summary.CLI is
             Append (Result, "  " & Column (Usage_Of (Command)) & Message ("help.cmd." & Name (Command)) & LF);
          end loop;
          Append (Result, LF & Message ("help.options") & LF);
-         for Item of Option_List loop
-            Append (Result, "  " & Column (Item.Spelling.all, 36) & Message ("help.opt." & Item.Key.all) & LF);
+         for Option in Option_Kind loop
+            Append (Result, Option_Line (Option));
          end loop;
          Append (Result, LF & Message ("help.exit") & LF);
          return To_String (Result);
@@ -111,9 +97,9 @@ package body Ada_Quality_Summary.CLI is
          end loop;
          Append (Result, Message ("help.command_usage", [Arg ("usage", Usage_Of (Topic))]) & LF & LF &
                    "  " & Message ("help.cmd." & Name (Topic)) & LF & LF & Message ("help.accepts") & LF);
-         for Item of Option_List loop
-            if Accepts (Topic, Item.Key.all) then
-               Append (Result, "  " & Column (Item.Spelling.all, 36) & Message ("help.opt." & Item.Key.all) & LF);
+         for Option in Option_Kind loop
+            if Accepts (Topic, Option) then
+               Append (Result, Option_Line (Option));
             end if;
          end loop;
          for Sort in Sort_Name .. Sort_Key'Last loop
@@ -144,9 +130,9 @@ package body Ada_Quality_Summary.CLI is
             when Terminal_Format =>
                return Terminal.Render
                  (Item,
-                  (Width   => Terminal.Detect_Width (Invocation.Width),
-                   Color   => Terminal.Use_Color (Invocation.Color),
-                   Unicode => Terminal.Unicode_Locale,
+                  (Width   => Terminal.Environment.Detect_Width (Invocation.Width),
+                   Color   => Terminal.Environment.Use_Color (Invocation.Color),
+                   Unicode => Terminal.Environment.Unicode_Locale,
                    Layout  => Invocation.Layout));
          end case;
       end;
@@ -196,7 +182,7 @@ package body Ada_Quality_Summary.CLI is
          end if;
          --  Retrieval, aggregation, and serialization are complete before the first byte is written.
          if Length (Result.Output) > 0 then
-            Write (To_String (Result.Output));
+            Write (Result.Output);
          end if;
          return Result.Exit_Code;
       exception

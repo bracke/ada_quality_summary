@@ -2,36 +2,33 @@ with Ada.Containers.Vectors;
 with Ada_Quality.History;
 with Ada_Quality.Reporting;
 with Ada_Quality.Types;
-with Ada_Quality_Summary.Aggregation;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Filtering;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
-with Ada_Quality_Summary.Trends;
 
 --  Complete typed data of one report, built before any rendering and shared by the terminal and JSON renderers.
+--
+--  Build fills the fields its report kind renders and leaves the rest at their defaults:
+--
+--  | Kind        | Fields beyond Metadata, Filter, Database_Label, Limit, Portfolio, and Row_Count            |
+--  |-------------|----------------------------------------------------------------------------------------------|
+--  | summary     | Common, finding counts and Groups, regression counts, Baselines, Comparisons                 |
+--  | projects    | Comparisons (for the per-project regression counts)                                          |
+--  | project     | Project, Assessment, Findings and counts, Regressions and counts, Baselines, Comparisons     |
+--  | indicators  | Indicators                                                                                   |
+--  | indicator   | Indicator, Indicator_Rows                                                                    |
+--  | problems    | Findings and counts, Groups                                                                  |
+--  | regressions | Regressions and counts, Baselines, Comparisons                                               |
+--  | trends      | Series, Excluded_Observations, Daily, Undated, Since, Until_Date                             |
+--  | history     | Project, History and lifecycle counts, Undated, Since, Until_Date, Comparisons               |
 package Ada_Quality_Summary.Reports is
    --  Complete typed data of one report, built before any rendering.
    subtype UString is Ada_Quality_Summary.Model.UString;
    --  Dynamically sized text.
 
-   type Indicator_Row is record
-      Project    : Ada_Quality_Summary.Model.Project_Summary;
-      State      : Ada_Quality_Summary.Aggregation.Indicator_State;
-      Has_Result : Boolean := False;
-      Result     : Ada_Quality.Types.Indicator_Result;
-   end record;
-   --  One project's result for the indicator report.
-   --  @field Project Project row.
-   --  @field State Result state.
-   --  @field Has_Result Whether a completed assessment supplied Result.
-   --  @field Result Decoded result.
-
-   package Indicator_Row_Vectors is new Ada.Containers.Vectors
-     (Index_Type => Positive, Element_Type => Indicator_Row);
-   --  Indicator report rows.
-
-   type Severity_Counts is array (Ada_Quality.Types.Severity) of Natural;
+   subtype Severity_Counts is Ada_Quality_Summary.Repository.Severity_Counts;
    --  Findings per severity.
 
    type Finding_Group is record
@@ -54,7 +51,6 @@ package Ada_Quality_Summary.Reports is
    type Report is record
       Metadata          : Ada_Quality_Summary.Model.Report_Metadata;
       Filter            : Ada_Quality_Summary.Filtering.Selection;
-      Layout            : Ada_Quality_Summary.Options.Layout_Mode := Ada_Quality_Summary.Options.Normal_Layout;
       Database_Label    : UString;
       Limit             : Natural := 0;
       Portfolio         : Ada_Quality_Summary.Model.Portfolio_Summary;
@@ -62,7 +58,7 @@ package Ada_Quality_Summary.Reports is
       Common            : Ada_Quality_Summary.Model.Indicator_Summary_Vectors.Vector;
       Indicators        : Ada_Quality_Summary.Model.Indicator_Summary_Vectors.Vector;
       Indicator         : Ada_Quality_Summary.Model.Indicator_Summary;
-      Indicator_Rows    : Indicator_Row_Vectors.Vector;
+      Indicator_Rows    : Ada_Quality_Summary.Model.Indicator_Row_Vectors.Vector;
       Project           : Ada_Quality_Summary.Model.Project_Summary;
       Has_Assessment    : Boolean := False;
       Assessment        : Ada_Quality.Reporting.Assessment_Record;
@@ -75,22 +71,23 @@ package Ada_Quality_Summary.Reports is
       Regression_Total  : Natural := 0;
       By_Kind           : Kind_Counts := [others => 0];
       Projects_Affected : Natural := 0;
-      Baselines         : Ada_Quality_Summary.Trends.Baseline_Info_Vectors.Vector;
+      Baselines         : Ada_Quality_Summary.Model.Baseline_Info_Vectors.Vector;
+      Comparisons       : Natural := 0;
       History           : Ada_Quality_Summary.Model.History_Summary_Vectors.Vector;
       Completed_Count   : Natural := 0;
       Running_Count     : Natural := 0;
       Interrupted_Count : Natural := 0;
       Invalid_Count     : Natural := 0;
       Series            : Ada_Quality_Summary.Model.Trend_Summary_Vectors.Vector;
-      Daily             : Ada_Quality_Summary.Trends.State_Snapshot_Vectors.Vector;
+      Excluded_Observations : Natural := 0;
+      Daily             : Ada_Quality_Summary.Model.State_Snapshot_Vectors.Vector;
       Undated           : Natural := 0;
-      Since             : Ada_Quality_Summary.Options.Date_Bound;
-      Until_Date        : Ada_Quality_Summary.Options.Date_Bound;
+      Since             : Ada_Quality_Summary.Criteria.Date_Bound;
+      Until_Date        : Ada_Quality_Summary.Criteria.Date_Bound;
    end record;
    --  Report data; fields not used by a report kind keep their defaults.
    --  @field Metadata Provenance.
    --  @field Filter Population selection.
-   --  @field Layout Terminal layout.
    --  @field Database_Label Database path shown by terminal output only.
    --  @field Limit Requested row limit, or zero.
    --  @field Portfolio Project rows (after limit) and totals (before limit).
@@ -112,16 +109,18 @@ package Ada_Quality_Summary.Reports is
    --  @field By_Kind Regressions per classification.
    --  @field Projects_Affected Projects with regressions.
    --  @field Baselines Baseline selection per project.
+   --  @field Comparisons Baseline comparisons made while building the report; each project is compared at most once.
    --  @field History Runs (after limit).
    --  @field Completed_Count Completed runs.
    --  @field Running_Count Running runs.
    --  @field Interrupted_Count Interrupted runs.
    --  @field Invalid_Count Invalid runs.
    --  @field Series Numeric series.
+   --  @field Excluded_Observations Excluded observations summed over Series.
    --  @field Daily Daily last-known-state snapshots.
    --  @field Undated Runs or observations without timestamps excluded by a date filter.
-   --  @field Since Earliest included instant.
-   --  @field Until_Date Exclusive latest instant.
+   --  @field Since First included UTC day.
+   --  @field Until_Date Last included UTC day.
 
    function Build
      (Data : Ada_Quality_Summary.Repository.Snapshot; Invocation : Ada_Quality_Summary.Options.Options;

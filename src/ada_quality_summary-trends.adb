@@ -1,6 +1,8 @@
 with Ada.Calendar;
 with Ada.Containers.Ordered_Sets;
+with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
+with Ada_Quality.History;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
@@ -10,61 +12,20 @@ package body Ada_Quality_Summary.Trends is
    use Ada.Strings.Unbounded;
    use Ada_Quality.Types;
    use Ada_Quality_Summary.Model;
+   use Ada_Quality_Summary.Criteria;
    use type Ada.Calendar.Time;
    use type Ada_Quality.History.Comparison_Status;
-   subtype Unbounded_String is Ada.Strings.Unbounded.Unbounded_String;
+   use type Ada_Quality.History.Incompatibility;
 
    package Repository renames Ada_Quality_Summary.Repository;
 
-   function Image (Status : Baseline_Status) return String is
-     (case Status is
-         when No_Current_Assessment => "no_current_assessment",
-         when No_Baseline => "no_baseline",
-         when Compared => "compared");
-
-   function Image (Status : Ada_Quality.History.Comparison_Status) return String is
-     (case Status is
-         when Ada_Quality.History.Comparison_Available => "comparison_available",
-         when Ada_Quality.History.No_Assessments => "no_assessments",
-         when Ada_Quality.History.No_Baseline => "no_baseline",
-         when Ada_Quality.History.Current_Incomplete => "current_incomplete",
-         when Ada_Quality.History.No_Completed_Baseline => "no_completed_baseline",
-         when Ada_Quality.History.Toolchain_Changed => "toolchain_changed",
-         when Ada_Quality.History.No_Compatible_Baseline => "no_compatible_baseline");
-
-   function Image (Reason : Exclusion_Reason) return String is
-     (case Reason is
-         when Missing_Source_Fingerprint => "missing_source_fingerprint",
-         when Policy_Changed => "policy_changed",
-         when Toolchain_Changed => "toolchain_changed");
-
-   --  Explain a rejection already decided by Ada_Quality.History.Compatible.
-   function Reason_For (Baseline, Current : Ada_Quality.Storage.History_Item) return Exclusion_Reason is
-   begin
-      if Length (Baseline.Source_Fingerprint) = 0 or else Length (Current.Source_Fingerprint) = 0 then
-         return Missing_Source_Fingerprint;
-      elsif Length (Baseline.Policy_Fingerprint) = 0 or else
-        Baseline.Policy_Fingerprint /= Current.Policy_Fingerprint
-      then
-         return Policy_Changed;
-      end if;
-      return Toolchain_Changed;
-   end Reason_For;
-
-   --  The history through the current assessment, so that Ada_Quality.History.Select_Comparison, which decides for
-   --  the last run it is given, decides for the current assessment rather than for a newer unfinished run.
-   function Through (Items : Ada_Quality.Storage.History_Vectors.Vector; Current_Id : Positive)
-      return Ada_Quality.Storage.History_Vectors.Vector
-   is
-      Result : Ada_Quality.Storage.History_Vectors.Vector;
-   begin
-      for Item of Items loop
-         if Item.Id <= Current_Id then
-            Result.Append (Item);
-         end if;
-      end loop;
-      return Result;
-   end Through;
+   --  The report spelling of why Ada_Quality.History.Compatible rejected a completed predecessor of the same project;
+   --  those predecessors cannot fail for another project or an unfinished state.
+   function Reason_Of (Value : Ada_Quality.History.Incompatibility) return Exclusion_Reason is
+     (case Value is
+         when Ada_Quality.History.Missing_Source_Fingerprint => Missing_Source_Fingerprint,
+         when Ada_Quality.History.Policy_Changed => Policy_Changed,
+         when others => Toolchain_Changed);
 
    function Completed_Only (Items : Ada_Quality.Storage.History_Vectors.Vector)
       return Ada_Quality.Storage.History_Vectors.Vector
@@ -79,30 +40,6 @@ package body Ada_Quality_Summary.Trends is
       return Result;
    end Completed_Only;
 
-   Comparison_Count : Natural := 0;
-
-   function Comparisons return Natural is (Comparison_Count);
-
-   --  Findings of the runs older than the baseline that are compatible with the current run, in run order: the
-   --  evidence Ada_Quality.History.Compare needs to tell a reintroduced finding from a newly introduced one. This is
-   --  the selection the Ada Quality regressions command makes.
-   function Findings_Before
-     (Data        : Repository.Snapshot;
-      Items       : Ada_Quality.Storage.History_Vectors.Vector;
-      Baseline_Id : Positive;
-      Current     : Ada_Quality.Storage.History_Item) return Ada_Quality.Storage.Detail_Vectors.Vector
-   is
-      Result : Ada_Quality.Storage.Detail_Vectors.Vector;
-   begin
-      for Item of Items loop
-         exit when Item.Id = Baseline_Id;
-         if Ada_Quality.History.Compatible (Item, Current) then
-            Result.Append_Vector (Repository.History_Evidence (Data, Item.Id).Findings);
-         end if;
-      end loop;
-      return Result;
-   end Findings_Before;
-
    procedure Regressions
      (Data       : Repository.Snapshot;
       Project_Id : Positive;
@@ -111,7 +48,6 @@ package body Ada_Quality_Summary.Trends is
    is
       Current_Id : constant Natural := Repository.Current_Run (Data, Project_Id);
    begin
-      Comparison_Count := Comparison_Count + 1;
       Baseline := (Project_Id => Project_Id, others => <>);
       Changes.Clear;
       if Current_Id = 0 then
@@ -119,24 +55,32 @@ package body Ada_Quality_Summary.Trends is
       end if;
       Baseline.Current_Run_Id := Current_Id;
       declare
-         Items        : constant Ada_Quality.Storage.History_Vectors.Vector :=
-           Through (Repository.History_Items (Data, Project_Id), Current_Id);
-         Selection    : constant Ada_Quality.History.Comparison_Selection :=
-           Ada_Quality.History.Select_Comparison (Items);
-         Baseline_Id  : constant Natural := Selection.Baseline_Id;
-         Current_Item : constant Ada_Quality.Storage.History_Item := Items.Last_Element;
+         --  Ada Quality selects the baseline and classifies the changes for the current completed assessment.
+         Outcome   : constant Ada_Quality.Reporting.Project_Comparison :=
+           Repository.Compare (Data, Project_Id, Current_Id);
+         Selection : constant Ada_Quality.History.Comparison_Selection := Outcome.Selection;
+         Items     : constant Ada_Quality.Storage.History_Vectors.Vector :=
+           Repository.History_Items (Data, Project_Id);
+         Current   : Ada_Quality.Storage.History_Item := Items.First_Element;
       begin
+         for Item of Items loop
+            if Item.Id = Current_Id then
+               Current := Item;
+            end if;
+         end loop;
          Baseline.Comparison := Selection.Status;
          Baseline.Policy_Changed := Selection.Policy_Changed;
+         --  Explain each completed run between the baseline and the current assessment that was skipped.
          for Index in reverse Items.First_Index .. Items.Last_Index loop
             declare
-               Item : constant Ada_Quality.Storage.History_Item := Items (Index);
+               Item   : constant Ada_Quality.Storage.History_Item := Items (Index);
+               Reason : constant Ada_Quality.History.Incompatibility :=
+                 Ada_Quality.History.Incompatibility_Of (Item, Current);
             begin
-               if Item.Id < Current_Id and then Item.Id > Baseline_Id and then To_String (Item.Status) = "completed"
-                 and then not Ada_Quality.History.Compatible (Item, Current_Item)
+               if Item.Id < Current_Id and then Item.Id > Selection.Baseline_Id and then
+                 To_String (Item.Status) = "completed" and then Reason /= Ada_Quality.History.No_Incompatibility
                then
-                  Baseline.Excluded.Append
-                    (Excluded_Run'(Run_Id => Item.Id, Reason => Reason_For (Item, Current_Item)));
+                  Baseline.Excluded.Append (Excluded_Run'(Run_Id => Item.Id, Reason => Reason_Of (Reason)));
                end if;
             end;
          end loop;
@@ -145,45 +89,22 @@ package body Ada_Quality_Summary.Trends is
             return;
          end if;
          Baseline.Status := Compared;
-         Baseline.Baseline_Run_Id := Baseline_Id;
-         declare
-            Baseline_Item : Ada_Quality.Storage.History_Item := Current_Item;
-         begin
-            for Item of Items loop
-               if Item.Id = Baseline_Id then
-                  Baseline_Item := Item;
-               end if;
-            end loop;
-            declare
-               Old_Rows : constant Ada_Quality.Reporting.History_Evidence :=
-                 Repository.History_Evidence (Data, Baseline_Id);
-               New_Rows : constant Ada_Quality.Reporting.History_Evidence :=
-                 Repository.History_Evidence (Data, Current_Id);
-               Found    : constant Ada_Quality.History.Regression_Vectors.Vector :=
-                 Ada_Quality.History.Compare
-                   (Baseline_Item, Current_Item, Old_Rows.Results, New_Rows.Results, Old_Rows.Measurements,
-                    New_Rows.Measurements, Old_Rows.Findings, New_Rows.Findings,
-                    Findings_Before (Data, Items, Baseline_Id, Current_Item));
-            begin
-               for Change of Found loop
-                  Changes.Append
-                    (Regression_Summary'
-                       (Project_Id => Project_Id, Current_Run_Id => Current_Id, Baseline_Run_Id => Baseline_Id,
-                      Kind => Change.Kind, Indicator => Change.Indicator, Before => Change.Before,
-                      After => Change.After));
-               end loop;
-            end;
-         end;
+         Baseline.Baseline_Run_Id := Selection.Baseline_Id;
+         for Change of Outcome.Changes loop
+            Changes.Append
+              (Regression_Summary'
+                 (Project_Id => Project_Id, Current_Run_Id => Current_Id, Baseline_Run_Id => Selection.Baseline_Id,
+                  Kind => Change.Kind, Indicator => Change.Indicator, Before => Change.Before, After => Change.After));
+         end loop;
       end;
    end Regressions;
 
    function In_Range
-     (Stamp : Ada_Quality.Reporting.Optional_Timestamp; Since, Until_Date : Options.Date_Bound) return Boolean is
-     ((not Since.Present or else (Stamp.Present and then Stamp.Value >= Since.Value)) and then
-      (not Until_Date.Present or else (Stamp.Present and then Stamp.Value < Until_Date.Value)));
+     (Stamp : Ada_Quality.Reporting.Optional_Timestamp; Since, Until_Date : Date_Bound) return Boolean is
+     ((not Since.Present and then not Until_Date.Present) or else
+      (Stamp.Present and then Within (Stamp.Value, Since, Until_Date)));
 
-   function Filtered (Since, Until_Date : Options.Date_Bound) return Boolean is
-     (Since.Present or else Until_Date.Present);
+   function Filtered (Since, Until_Date : Date_Bound) return Boolean is (Since.Present or else Until_Date.Present);
 
    --  The timestamp that places a run in time: its terminal time, or its start time while running.
    function Placed (Run : Ada_Quality.Reporting.Run_Record) return Ada_Quality.Reporting.Optional_Timestamp is
@@ -191,7 +112,7 @@ package body Ada_Quality_Summary.Trends is
 
    function History
      (Data : Repository.Snapshot; Project_Id : Positive;
-      Since, Until_Date : Options.Date_Bound; Undated : out Natural) return History_Summary_Vectors.Vector
+      Since, Until_Date : Date_Bound; Undated : out Natural) return History_Summary_Vectors.Vector
    is
       Result : History_Summary_Vectors.Vector;
    begin
@@ -208,7 +129,7 @@ package body Ada_Quality_Summary.Trends is
             begin
                if Run.State = Assessment_Completed then
                   Item.Has_Quality := True;
-                  Item.Quality := Classify (Repository.Assessment (Data, Run.Id).Results);
+                  Item.Quality := Repository.Facts (Data, Run.Id).Quality;
                end if;
                Result.Append (Item);
             end;
@@ -221,7 +142,7 @@ package body Ada_Quality_Summary.Trends is
      (Data       : Repository.Snapshot;
       Projects   : Project_Vectors.Vector;
       Indicator  : Indicator_Id;
-      Since, Until_Date : Options.Date_Bound) return Trend_Summary
+      Since, Until_Date : Date_Bound) return Trend_Summary
    is
       Unit   : constant String := Ada_Quality.Indicators.Measurement_Unit (Indicator);
       --  Ada_Quality.Types defines Decimal_Value as the fixed basis-point kind; every other numeric unit is an
@@ -245,25 +166,22 @@ package body Ada_Quality_Summary.Trends is
                  (Completed, Repository.Measurements (Data, Project.Project_Id), Indicator);
             end if;
             for Item of Completed loop
-               declare
-                  Run : constant Ada_Quality.Reporting.Run_Record := Repository.Run (Data, Item.Id);
-               begin
-                  if In_Range (Run.Finished_At, Since, Until_Date) then
-                     Eligible := Eligible + 1;
-                  end if;
-               end;
+               if In_Range (Repository.Run (Data, Item.Id).Finished_At, Since, Until_Date) then
+                  Eligible := Eligible + 1;
+               end if;
             end loop;
             for Point of Points loop
                declare
-                  Run   : constant Ada_Quality.Reporting.Run_Record := Repository.Run (Data, Point.Run_Id);
-                  Value : constant Measurement_Value :=
-                    Repository.Assessment (Data, Point.Run_Id).Results (Indicator_Id'Pos (Indicator) + 1).Measurement;
+                  Observed : constant Ada_Quality.Reporting.Optional_Timestamp :=
+                    Repository.Run (Data, Point.Run_Id).Finished_At;
                begin
                   --  Never combine measurement representations within one series.
-                  if In_Range (Run.Finished_At, Since, Until_Date) and then Value.Kind = Result.Kind then
+                  if In_Range (Observed, Since, Until_Date) and then
+                    Repository.Facts (Data, Point.Run_Id).Kinds (Indicator) = Result.Kind
+                  then
                      Result.Points.Append
                        (Trend_Point'(Project_Id => Project.Project_Id, Run_Id => Point.Run_Id, Value => Point.Value,
-                         Observed => Run.Finished_At));
+                         Observed => Observed));
                      Included := Included + 1;
                   end if;
                end;
@@ -280,7 +198,7 @@ package body Ada_Quality_Summary.Trends is
    end Metric_Series;
 
    function Undated_Runs
-     (Data : Repository.Snapshot; Projects : Project_Vectors.Vector; Since, Until_Date : Options.Date_Bound)
+     (Data : Repository.Snapshot; Projects : Project_Vectors.Vector; Since, Until_Date : Date_Bound)
       return Natural
    is
       Count : Natural := 0;
@@ -297,65 +215,104 @@ package body Ada_Quality_Summary.Trends is
       return Count;
    end Undated_Runs;
 
-   function Day_Of (Time : Ada.Calendar.Time) return String is
-      Image : constant String := Ada_Quality.Reporting.Image ((Present => True, Value => Time));
-   begin
-      return Image (Image'First .. Image'First + 9);
-   end Day_Of;
+   package Day_Sets is new Ada.Containers.Ordered_Sets (Element_Type => Ada.Calendar.Time);
 
-   package Day_Sets is new Ada.Containers.Ordered_Sets (Element_Type => Unbounded_String);
+   package Day_Vectors is new Ada.Containers.Vectors (Index_Type => Positive, Element_Type => Ada.Calendar.Time);
+
+   --  Placeholder day of an undated run; Earlier orders undated runs first without consulting it.
+   Epoch : constant Ada.Calendar.Time := Ada.Calendar.Time_Of (Ada.Calendar.Year_Number'First, 1, 1);
+
+   --  A completed run placed on the day it counts from; undated legacy runs count from before every day.
+   type Placed_Run is record
+      Undated : Boolean;
+      Day     : Ada.Calendar.Time;
+      Run_Id  : Positive;
+   end record;
+
+   function Earlier (Left, Right : Placed_Run) return Boolean is
+     (if Left.Undated /= Right.Undated then Left.Undated
+      elsif not Left.Undated and then Left.Day /= Right.Day then Left.Day < Right.Day
+      else Left.Run_Id < Right.Run_Id);
+
+   package Placed_Vectors is new Ada.Containers.Vectors (Index_Type => Positive, Element_Type => Placed_Run);
+
+   package Placed_Sorting is new Placed_Vectors.Generic_Sorting ("<" => Earlier);
+
+   --  Classify the population at the end of each of Days, ascending. Each project's completed runs are walked in
+   --  placement order alongside the days: the run counted on a day is the newest one placed on or before it, so one
+   --  pass per project replaces a scan per day.
+   function Snapshots_Of
+     (Data : Repository.Snapshot; Projects : Project_Vectors.Vector; Days : Day_Vectors.Vector)
+      return State_Snapshot_Vectors.Vector
+   is
+      Totals : array (1 .. Natural (Days.Length)) of Portfolio_Totals;
+      Result : State_Snapshot_Vectors.Vector;
+   begin
+      for Project of Projects loop
+         declare
+            Placed   : Placed_Vectors.Vector;
+            Next     : Positive := 1;
+            Selected : Natural := 0;
+         begin
+            for Run of Repository.Runs (Data, Project.Project_Id) loop
+               if Run.State = Assessment_Completed then
+                  Placed.Append
+                    (Placed_Run'
+                       (Undated => not Run.Finished_At.Present,
+                        Day     => (if Run.Finished_At.Present then Day_Start (Run.Finished_At.Value) else Epoch),
+                        Run_Id  => Run.Id));
+               end if;
+            end loop;
+            Placed_Sorting.Sort (Placed);
+            for Index in Days.First_Index .. Days.Last_Index loop
+               while Next <= Placed.Last_Index and then
+                 (Placed (Next).Undated or else Placed (Next).Day <= Days (Index))
+               loop
+                  Selected := Natural'Max (Selected, Placed (Next).Run_Id);
+                  Next := Next + 1;
+               end loop;
+               if Selected = 0 then
+                  Rules.Counting.Add_Classified (Rules.Portfolio_Totals (Totals (Index)), Rules.Unassessed, 0, 0);
+               else
+                  declare
+                     Counts : constant Indicator_Totals := Repository.Facts (Data, Selected).Totals;
+                  begin
+                     Rules.Counting.Add_Classified
+                       (Rules.Portfolio_Totals (Totals (Index)),
+                        Rules.Counting.Classify (Rules.Indicator_Totals (Counts)),
+                        Violated => Counts.Violated, Unknown => Counts.Unknown_Count);
+                  end;
+               end if;
+            end loop;
+         end;
+      end loop;
+      for Index in Days.First_Index .. Days.Last_Index loop
+         Result.Append
+           (State_Snapshot'(Day => To_Unbounded_String (Day_Image (Days (Index))), Totals => Totals (Index)));
+      end loop;
+      return Result;
+   end Snapshots_Of;
 
    function Daily_States
      (Data : Repository.Snapshot;
       Projects : Project_Vectors.Vector;
-      Since, Until_Date : Options.Date_Bound) return State_Snapshot_Vectors.Vector
+      Since, Until_Date : Date_Bound) return State_Snapshot_Vectors.Vector
    is
-      Days   : Day_Sets.Set;
-      Result : State_Snapshot_Vectors.Vector;
+      Day_Set : Day_Sets.Set;
+      Days    : Day_Vectors.Vector;
    begin
       for Project of Projects loop
          for Run of Repository.Runs (Data, Project.Project_Id) loop
             if Run.State = Assessment_Completed and then Run.Finished_At.Present and then
-              In_Range (Run.Finished_At, Since, Until_Date)
+              Within (Run.Finished_At.Value, Since, Until_Date)
             then
-               Days.Include (To_Unbounded_String (Day_Of (Run.Finished_At.Value)));
+               Day_Set.Include (Day_Start (Run.Finished_At.Value));
             end if;
          end loop;
       end loop;
-      for Day of Days loop
-         declare
-            Day_End : constant Ada.Calendar.Time := Options.Parse_Date (To_String (Day)) + 86_400.0;
-            Totals  : Portfolio_Totals;
-         begin
-            for Project of Projects loop
-               declare
-                  Selected : Natural := 0;
-               begin
-                  for Run of Repository.Runs (Data, Project.Project_Id) loop
-                     --  Legacy runs predate every snapshot day; see Daily_States in the package specification.
-                     if Run.State = Assessment_Completed and then
-                       (not Run.Finished_At.Present or else Run.Finished_At.Value < Day_End)
-                     then
-                        Selected := Run.Id;
-                     end if;
-                  end loop;
-                  if Selected = 0 then
-                     Rules.Counting.Add_Classified (Rules.Portfolio_Totals (Totals), Rules.Unassessed, 0, 0);
-                  else
-                     declare
-                        Counts : constant Indicator_Totals :=
-                          Count_Indicators (Repository.Assessment (Data, Selected).Results);
-                     begin
-                        Rules.Counting.Add_Classified
-                          (Rules.Portfolio_Totals (Totals), Rules.Counting.Classify (Rules.Indicator_Totals (Counts)),
-                           Violated => Counts.Violated, Unknown => Counts.Unknown_Count);
-                     end;
-                  end if;
-               end;
-            end loop;
-            Result.Append (State_Snapshot'(Day => Day, Totals => Totals));
-         end;
+      for Day of Day_Set loop
+         Days.Append (Day);
       end loop;
-      return Result;
+      return Snapshots_Of (Data, Projects, Days);
    end Daily_States;
 end Ada_Quality_Summary.Trends;

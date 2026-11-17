@@ -36,7 +36,8 @@ procedure Classification (Id : Test_Id) is
          when T010 =>
             Interrupt (Database, Start (Database, Project));
             Ignored := Publish (Database, Build (Project, Shape (Status => Assessment_Invalid)));
-         when others => null;
+         when T002 => null;
+         when others => raise Program_Error with "unhandled " & Id'Image;
       end case;
    end Arrange;
 
@@ -84,7 +85,7 @@ procedure Classification (Id : Test_Id) is
          when T010 =>
             Expect_Equal (Value (Text, Row & "quality"), """unassessed""", "failed runs do not assess");
             Expect (Value (Text, Row & "latest_run_id") /= "null", "the latest run is still recorded");
-         when others => null;
+         when others => raise Program_Error with "unhandled " & Id'Image;
       end case;
    end Verify;
 begin

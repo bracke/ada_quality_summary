@@ -1,13 +1,14 @@
+with Ada.Containers.Vectors;
 with Ada_Quality.Reporting;
 with Ada_Quality.Types;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Model;
-with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
 
 --  Exact project and indicator resolution, population selection, and deterministic sorting.
 --
---  Filters are applied before sorting and limiting. Every ordering ends with a unique identity tie-breaker, so
---  results never depend on container insertion order.
+--  Filters are applied before sorting and limiting. Every ordering ends by comparing every field that can tell two
+--  rows apart, so results never depend on container insertion order.
 package Ada_Quality_Summary.Filtering is
    --  Exact project and indicator resolution, population selection, deterministic sorting, and row limiting.
 
@@ -54,14 +55,9 @@ package Ada_Quality_Summary.Filtering is
    --  @param Filter Selection.
    --  @return Selected registry entries.
 
-   function Basename (Path : String) return String;
-   --  Return the final path component.
-   --  @param Path Project path.
-   --  @return Directory basename.
-
    procedure Sort_Projects
      (Items : in out Ada_Quality_Summary.Model.Project_Vectors.Vector;
-      Key : Ada_Quality_Summary.Options.Sort_Key; Overview : Boolean; Reverse_Order : Boolean);
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Overview : Boolean; Reverse_Order : Boolean);
    --  Order project rows; the default is quality priority for the overview and name otherwise.
    --  @param Items Rows.
    --  @param Key Sort key.
@@ -70,7 +66,7 @@ package Ada_Quality_Summary.Filtering is
 
    procedure Sort_Indicators
      (Items : in out Ada_Quality_Summary.Model.Indicator_Summary_Vectors.Vector;
-      Key : Ada_Quality_Summary.Options.Sort_Key; Reverse_Order : Boolean);
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Reverse_Order : Boolean);
    --  Order indicator aggregates; the default is registry order.
    --  @param Items Aggregates.
    --  @param Key Sort key.
@@ -82,7 +78,7 @@ package Ada_Quality_Summary.Filtering is
 
    procedure Sort_Findings
      (Items : in out Ada_Quality_Summary.Model.Finding_Summary_Vectors.Vector;
-      Key : Ada_Quality_Summary.Options.Sort_Key; Reverse_Order : Boolean);
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Reverse_Order : Boolean);
    --  Order findings; the default is severity descending, then indicator, project, and fingerprint.
    --  @param Items Findings.
    --  @param Key Sort key.
@@ -90,7 +86,7 @@ package Ada_Quality_Summary.Filtering is
 
    procedure Sort_Regressions
      (Items : in out Ada_Quality_Summary.Model.Regression_Summary_Vectors.Vector;
-      Key : Ada_Quality_Summary.Options.Sort_Key; Reverse_Order : Boolean);
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Reverse_Order : Boolean);
    --  Order regressions; the default is project, then indicator and kind.
    --  @param Items Regressions.
    --  @param Key Sort key.
@@ -104,9 +100,38 @@ package Ada_Quality_Summary.Filtering is
 
    procedure Sort_Points
      (Items : in out Ada_Quality_Summary.Model.Trend_Point_Vectors.Vector;
-      Key : Ada_Quality_Summary.Options.Sort_Key; Reverse_Order : Boolean);
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Reverse_Order : Boolean);
    --  Order trend observations by run identity, then project; or by project, then run.
    --  @param Items Observations.
    --  @param Key Sort key.
    --  @param Reverse_Order Whether to reverse the ordering.
+
+   procedure Sort_Indicator_Rows
+     (Items : in out Ada_Quality_Summary.Model.Indicator_Row_Vectors.Vector;
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Reverse_Order : Boolean);
+   --  Order indicator report rows; the default is result state, then name and identity.
+   --  @param Items Rows.
+   --  @param Key Sort key.
+   --  @param Reverse_Order Whether to reverse the ordering.
+
+   procedure Sort_Results
+     (Items : in out Ada_Quality.Types.Result_Vectors.Vector;
+      Key : Ada_Quality_Summary.Criteria.Sort_Key; Reverse_Order : Boolean);
+   --  Order one assessment's results; the default is registry order, `state` puts violations first.
+   --  @param Items Results.
+   --  @param Key Sort key.
+   --  @param Reverse_Order Whether to reverse the ordering.
+
+   --  Row limiting for one collection type.
+   --  @formal Element_Type Row type.
+   --  @formal Vectors Row collection.
+   generic
+      type Element_Type is private;
+      with package Vectors is new Ada.Containers.Vectors (Positive, Element_Type, <>);
+   package Limiting is
+      procedure Limit (Items : in out Vectors.Vector; Count : Natural);
+      --  Keep at most Count leading rows of an ordered collection; zero keeps every row.
+      --  @param Items Ordered rows.
+      --  @param Count Row limit.
+   end Limiting;
 end Ada_Quality_Summary.Filtering;

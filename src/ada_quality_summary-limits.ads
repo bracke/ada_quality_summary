@@ -28,6 +28,8 @@ package Ada_Quality_Summary.Limits is
    --  Largest serialized JSON document, in bytes.
 
    Default_Load : constant Ada_Quality.Reporting.Load_Limits :=
-     (Max_Projects => Maximum_Projects, Max_Runs => Maximum_Runs, Max_Findings => Maximum_Findings);
-   --  Load limits passed to Ada_Quality.Reporting when a report opens a database.
+     (Max_Projects => Maximum_Projects, Max_Runs => Maximum_Runs, Max_Findings => Maximum_Findings, others => <>);
+   --  Load limits passed to Ada_Quality.Reporting when a report opens a database. The row limits not named here
+   --  (results, measurements, executions, events, total rows, and text bytes) keep Ada Quality's defaults. Every
+   --  completed assessment stores 33 results, so the result-row limit admits fewer completed runs than Maximum_Runs.
 end Ada_Quality_Summary.Limits;

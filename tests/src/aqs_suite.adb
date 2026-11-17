@@ -1,6 +1,8 @@
 with Ada.Calendar;
+with Ada.Characters.Handling;
 with Ada.Directories;
 with Ada.Environment_Variables;
+with Ada.Finalization;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada.Strings.UTF_Encoding.Wide_Wide_Strings;
@@ -16,18 +18,20 @@ with Jsonlib.Serializers;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
+with Ada_Quality.Storage.Testing;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Aggregation;
 with Ada_Quality_Summary.CLI;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Filtering;
 with Ada_Quality_Summary.JSON;
 with Ada_Quality_Summary.Reports;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
-with Ada_Quality_Summary.Terminal;
+with Ada_Quality_Summary.Terminal.Cells;
+with Ada_Quality_Summary.Terminal.Environment;
 with Ada_Quality_Summary.Text;
-with Ada_Quality_Summary.Trends;
 with Aqs_Fixtures;
 with Aqs_Schema;
 with Project_Tools.Files;
@@ -42,14 +46,15 @@ package body Aqs_Suite is
    use Aqs_Fixtures;
    use type Ada_Quality_Summary.Model.Project_Quality_State;
    use type Ada_Quality_Summary.Options.Command_Kind;
-   use type Ada_Quality_Summary.Options.Sort_Key;
+   use type Ada_Quality_Summary.Criteria.Sort_Key;
 
    type Test_Id is
      (T001, T002, T003, T004, T005, T006, T007, T008, T009, T010, T011, T012, T013, T014, T015, T016, T017, T018,
       T019, T020, T021, T022, T023, T024, T025, T026, T027, T028, T029, T030, T031, T032, T033, T034, T035, T036,
       T037, T038, T039, T040, T041, T042, T043, T044, T045, T046, T047, T048, T049, T050,
       X_Options, X_Precedence, X_Properties, X_Display, X_Catalog, X_Round_Trip, X_Help, X_Concurrent_Readers,
-      X_Recovering_Writer, X_Killed_Reader, X_Layouts, X_Sorting);
+      X_Recovering_Writer, X_Killed_Reader, X_Layouts, X_Sorting, X_Baselines, X_Lifecycle, X_Executions,
+      X_Report_Fields, X_Input_Edges);
 
    type Title_Access is access constant String;
 
@@ -115,7 +120,12 @@ package body Aqs_Suite is
       X_Recovering_Writer => new String'("Recovering_Writer"),
       X_Killed_Reader => new String'("Killed_Reader"),
       X_Layouts => new String'("Layouts"),
-      X_Sorting => new String'("Sort_Keys")];
+      X_Sorting => new String'("Sort_Keys"),
+      X_Baselines => new String'("Baseline_Reasons"),
+      X_Lifecycle => new String'("Finding_Lifecycle"),
+      X_Executions => new String'("Execution_Spellings"),
+      X_Report_Fields => new String'("Report_Fields"),
+      X_Input_Edges => new String'("Input_Edges")];
 
    type Acceptance_Test (Id : Test_Id) is new AUnit.Simple_Test_Cases.Test_Case with null record;
    overriding function Name (Item : Acceptance_Test) return AUnit.Message_String;
@@ -148,11 +158,13 @@ package body Aqs_Suite is
    function Shape
      (Violations : String := ""; Unknowns : String := ""; NA : String := ""; Policy : String := "policy-a";
       Toolchain : String := "toolchain-a"; Findings : Natural := 1; Fingerprint : String := "";
-      Coverage : Long_Long_Integer := 9_500; Status : Assessment_Status := Assessment_Completed) return Plan is
+      Coverage : Long_Long_Integer := 9_500; Status : Assessment_Status := Assessment_Completed;
+      Source : String := "source-a"; Level : Severity := Medium; Unknown_Run : Execution_Status := Blocked)
+      return Plan is
      ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
-       Findings => Findings, Fingerprint => To_Unbounded_String (Fingerprint), Level => Medium,
-       Coverage => Coverage, Source => To_Unbounded_String ("source-a"), Policy => To_Unbounded_String (Policy),
-       Toolchain => To_Unbounded_String (Toolchain), Status => Status));
+       Findings => Findings, Fingerprint => To_Unbounded_String (Fingerprint), Level => Level,
+       Coverage => Coverage, Source => To_Unbounded_String (Source), Policy => To_Unbounded_String (Policy),
+       Toolchain => To_Unbounded_String (Toolchain), Status => Status, Unknown_Run => Unknown_Run));
 
    --  A fresh fixture directory and the absolute path of its (not yet created) database.
    function New_Database (Name : String) return String is (Absolute (Dir (Name)) & "/quality.db");
@@ -172,9 +184,11 @@ package body Aqs_Suite is
       return Output (Result);
    end Json;
 
+   Absent : constant String := "<absent>";
+
    --  Return the compact JSON text of the value at a dotted path such as `data.totals.projects` or
-   --  `data.projects[0].quality`.
-   function Value (Text, Path : String) return String is
+   --  `data.projects[0].quality`, or Absent when the path names nothing.
+   function Value_Or_Absent (Text, Path : String) return String is
       Doc   : Jsonlib.Documents.Document;
       Error : Jsonlib.Errors.Error_Info;
       Item  : Jsonlib.Documents.Node;
@@ -197,23 +211,49 @@ package body Aqs_Suite is
                   Item := Doc.Element (Item, Natural'Value (Part (Bracket + 1 .. Part'Last - 1)) + 1);
                end if;
                if not Jsonlib.Documents.Is_Present (Item) then
-                  return "<absent>";
+                  return Absent;
                end if;
             end;
             Start := Index + 1;
          end if;
       end loop;
       return Jsonlib.Serializers.To_String (Doc, Item);
+   end Value_Or_Absent;
+
+   --  Return the value at Path, failing the test when the path names nothing: a missing or renamed field must not
+   --  compare equal to another missing field.
+   function Value (Text, Path : String) return String is
+      Result : constant String := Value_Or_Absent (Text, Path);
+   begin
+      Assert (Result /= Absent, "the JSON output has " & Path);
+      return Result;
    end Value;
 
+   --  Return the length of the array at Path, failing the test when Path is not an array.
    function Count_Of (Text, Path : String) return Natural is
       Doc   : Jsonlib.Documents.Document;
       Error : Jsonlib.Errors.Error_Info;
       Raw   : constant String := Value (Text, Path);
+      use type Jsonlib.Errors.Error_Code;
    begin
       Jsonlib.Parsers.Parse (Raw, Doc, Error);
+      Assert (Error.Code = Jsonlib.Errors.No_Error and then Raw (Raw'First) = '[', Path & " is an array");
       return Doc.Length (Doc.Root);
    end Count_Of;
+
+   --  The Field of every element of the array at Path, comma-separated, to compare a whole ordering at once.
+   function Column (Text, Path, Field : String) return String is
+      Result : Ada.Strings.Unbounded.Unbounded_String;
+   begin
+      for Index in 0 .. Count_Of (Text, Path) - 1 loop
+         if Index > 0 then
+            Append (Result, ",");
+         end if;
+         Append (Result, Value (Text, Path & "[" & Ada.Strings.Fixed.Trim (Index'Image, Ada.Strings.Left) & "]." &
+                                  Field));
+      end loop;
+      return To_String (Result);
+   end Column;
 
    function Int (Text : String) return Natural is (Natural'Value (Text));
 
@@ -230,20 +270,23 @@ package body Aqs_Suite is
       Assert (Actual = Wanted, Message & ": expected " & Wanted & ", found " & Actual);
    end Expect_Equal;
 
-   --  Every line of Text fits Width display cells.
-   function Fits (Text : String; Width : Positive) return Boolean is
+   --  The first line of Text wider than Width display cells, or Absent; a last line without a line feed counts too.
+   function Wider_Line (Text : String; Width : Natural) return String is
       Start : Positive := Text'First;
    begin
-      for Index in Text'Range loop
-         if Text (Index) = LF then
-            if Ada_Quality_Summary.Terminal.Display_Width (Text (Start .. Index - 1)) > Width then
-               return False;
+      for Index in Text'First .. Text'Last + 1 loop
+         if Index > Text'Last or else Text (Index) = LF then
+            if Ada_Quality_Summary.Terminal.Cells.Display_Width (Text (Start .. Index - 1)) > Width then
+               return Text (Start .. Index - 1);
             end if;
             Start := Index + 1;
          end if;
       end loop;
-      return True;
-   end Fits;
+      return Absent;
+   end Wider_Line;
+
+   --  Every line of Text fits Width display cells.
+   function Fits (Text : String; Width : Positive) return Boolean is (Wider_Line (Text, Width) = Absent);
 
    function Has_Escape (Text : String) return Boolean is (Contains (Text, [Character'Val (27)]));
 
@@ -360,6 +403,36 @@ package body Aqs_Suite is
       end if;
    end Clear_Env;
 
+   --  Restores one environment variable when it goes out of scope, so a failing test cannot leak a setting into the
+   --  tests that follow it.
+   type Saved_Variable (Length : Natural) is new Ada.Finalization.Limited_Controlled with record
+      Name    : String (1 .. Length);
+      Present : Boolean := False;
+      Value   : Ada.Strings.Unbounded.Unbounded_String;
+   end record;
+
+   overriding procedure Finalize (Item : in out Saved_Variable);
+
+   overriding procedure Finalize (Item : in out Saved_Variable) is
+   begin
+      if Item.Present then
+         Set_Env (Item.Name, To_String (Item.Value));
+      else
+         Clear_Env (Item.Name);
+      end if;
+   end Finalize;
+
+   function Saving (Name : String) return Saved_Variable is
+   begin
+      return Item : Saved_Variable (Name'Length) do
+         Item.Name := Name;
+         Item.Present := Ada.Environment_Variables.Exists (Name);
+         if Item.Present then
+            Item.Value := To_Unbounded_String (Ada.Environment_Variables.Value (Name));
+         end if;
+      end return;
+   end Saving;
+
    --  Classification and counting: T001-T010
    procedure Classification (Id : Test_Id) is separate;
 
@@ -427,6 +500,18 @@ package body Aqs_Suite is
    package body Unit_Tests is separate;
    use Unit_Tests;
 
+   --  Behaviors found unasserted in review: baseline reasons, finding lifecycles, execution spellings, report
+   --  fields, and option and input edges
+   package Review_Tests is
+      procedure Baseline_Reasons;
+      procedure Finding_Lifecycle;
+      procedure Execution_Spellings;
+      procedure Report_Fields;
+      procedure Input_Edges;
+   end Review_Tests;
+   package body Review_Tests is separate;
+   use Review_Tests;
+
    procedure Dispatch (Id : Test_Id);
 
    overriding procedure Run_Test (Item : in out Acceptance_Test) is
@@ -474,6 +559,11 @@ package body Aqs_Suite is
    procedure Run_Sorting is new Ignoring_Id (Sorting);
    procedure Run_Unchanged is new Ignoring_Id (Unchanged);
    procedure Run_Unknown_Option is new Ignoring_Id (Unknown_Option);
+   procedure Run_Baseline_Reasons is new Ignoring_Id (Baseline_Reasons);
+   procedure Run_Finding_Lifecycle is new Ignoring_Id (Finding_Lifecycle);
+   procedure Run_Execution_Spellings is new Ignoring_Id (Execution_Spellings);
+   procedure Run_Report_Fields is new Ignoring_Id (Report_Fields);
+   procedure Run_Input_Edges is new Ignoring_Id (Input_Edges);
 
    type Runner is access procedure (Id : Test_Id);
 
@@ -506,7 +596,12 @@ package body Aqs_Suite is
       X_Recovering_Writer => Run_Recovering_Writer'Access,
       X_Killed_Reader => Run_Killed_Reader'Access,
       X_Layouts => Run_Layouts'Access,
-      X_Sorting => Run_Sorting'Access];
+      X_Sorting => Run_Sorting'Access,
+      X_Baselines => Run_Baseline_Reasons'Access,
+      X_Lifecycle => Run_Finding_Lifecycle'Access,
+      X_Executions => Run_Execution_Spellings'Access,
+      X_Report_Fields => Run_Report_Fields'Access,
+      X_Input_Edges => Run_Input_Edges'Access];
 
    procedure Dispatch (Id : Test_Id) is
    begin

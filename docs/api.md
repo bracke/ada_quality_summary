@@ -25,21 +25,25 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | ---- | ----------------- |
 | `Ada_Quality_Summary` | `Version`, `Report_Format_Version`, `Argument_Error`, `Report_Error`, `Data_Error`. |
 | `.Limits` | `Maximum_Projects`, `Maximum_Runs`, `Maximum_Findings`, `Maximum_Width`, `Maximum_Field_Width`, `Maximum_JSON_Bytes`, `Default_Load`. |
-| `.Options` | `Options`, `Command_Kind`, `Sort_Key`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`. |
+| `.Criteria` | `Sort_Key`, `Image`, `Date_Bound`, `Day_Start`, `Day_Image`, `Within`. |
+| `.Options` | `Options`, `Command_Kind`, `Option_Kind`, `Spelling`, `Value_Name`, `Help_Key`, `Accepts`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`, `Name`, `Report_Of`. |
 | `.Rules` | `Quality_State`, `Newer_State`, `Result_State`, `Indicator_Totals`, `Portfolio_Totals`. |
 | `.Rules.Counting` | `Total`, `Applicable`, `Sum`, `Tally`, `Classify`, `Priority`, `Classified`, `Consistent`, `Add_Classified`, `Add_Project` (SPARK, proved). |
-| `.Model` | `Project_Quality_State`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Finding_Summary`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Report_Metadata`, `Classify`, `Count_Indicators`. |
-| `.Repository` | `Repository`, `Snapshot`, `Open`, `Load`, indexed queries, `Assessment`. |
-| `.Filtering` | `Selection`, `Resolve_Project`, `Resolve_Indicator`, `Population`, sorting procedures. |
-| `.Aggregation` | `Build_Project`, `Build_Projects`, `Build_Totals`, `Build_Portfolio`, `Build_Indicator`, `Build_Indicators`, `Build_Findings`, `State_Of`. |
-| `.Trends` | `Regressions`, `History`, `Metric_Series`, `Daily_States`, `Baseline_Info`. |
-| `.Reports` | `Report`, `Build`. |
-| `.Terminal` | `Settings`, `Render`, `Detect_Width`, `Use_Color`, `Display_Width`, `Fit`, `Pad`, `Basis_Points_Image`. |
+| `.Model` | `Project_Quality_State`, `Indicator_State`, `State_Of`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Indicator_Row`, `Finding_Summary`, `Summary_Of`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Baseline_Info`, `State_Snapshot`, `Report_Kind`, `Report_Metadata`, `Basename`, `Classify`, `Count_Indicators`, `Quality_Priority`, images. |
+| `.Repository` | `Repository`, `Snapshot`, `Open`, `Load`, indexed queries, `Assessment`, `Result_Of`, `Run_Facts`, `Facts`. |
+| `.Filtering` | `Selection`, `Parse_Project_Id`, `Resolve_Project`, `Resolve_Indicator`, `Population`, sorting procedures, `Limit`. |
+| `.Aggregation` | `Build_Project`, `Build_Projects`, `Build_Totals`, `Build_Portfolio`, `Build_Indicator`, `Build_Indicators`, `Build_Findings`, `Findings_Of`, `State_Of`. |
+| `.Trends` | `Regressions`, `History`, `Metric_Series`, `Undated_Runs`, `Daily_States`. |
+| `.Reports` | `Report`, `Build`; the report-kind table in the specification lists the fields each kind fills. |
+| `.Terminal` | `Settings`, `Render`. |
+| `.Terminal.Environment` | `Stdout_Is_Terminal`, `Clamp`, `Detect_Width`, `Use_Color`, `Unicode_Locale`. |
+| `.Terminal.Cells` | `Display_Width`, `Fit`, `Pad`, `Basis_Points_Image`. |
 | `.JSON` | `Render`. |
 | `.CLI` | `Execute`, `Run`, `Outcome`, exit-code constants. |
 | `.Text` | `Message`, `Arg`, `Catalog_Is_Valid`, `Has_Message`. |
 
-Aggregation, filtering, trends, and report assembly are deterministic and side-effect-free. The renderers neither
-access the database nor compute compliance.
+Aggregation, filtering, trends, and report assembly are deterministic. Their only side effect is the memo of run
+facts inside the snapshot, which changes no result. `Terminal.Environment.Use_Color` sets the process-wide
+`terminal_styles` color policy. The renderers neither access the database nor compute compliance.
 
 Generate the reference with `alr exec -- gnatdoc -P ada_quality_summary.gpr`.

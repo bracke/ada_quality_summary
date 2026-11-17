@@ -2,7 +2,9 @@
 --
 --  Supported keywords: `$ref` (local and `common.schema.json` references), `type`, `properties`, `required`,
 --  `additionalProperties: false`, `items`, `maxItems`, `enum`, `const`, `minimum`, `minLength`, `oneOf`, and
---  `pattern` limited to anchored literals, character classes, alternation groups, and `{n}` repetition.
+--  `pattern` limited to anchored literals, character classes, alternation groups, and `{n}` repetition. The
+--  annotations `$schema`, `$id`, `$defs`, `title`, and `description` are accepted. Any other keyword, an
+--  `additionalProperties` other than `false`, or a list of types is reported as unsupported rather than ignored.
 package Aqs_Schema is
    --  Validator for the JSON Schema subset used by the report schemas.
 

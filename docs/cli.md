@@ -53,6 +53,9 @@ Collection commands are `summary`, `projects`, `indicators`, `indicator`, `probl
 
 Unknown options, duplicate scalar options (including `--color` with `--no-color`), missing values, unsupported sort
 keys, invalid dates, `--since` later than `--until`, and options used outside their scope are argument errors.
+`help` checks its options against the command it describes, or against `help` itself without a topic, so
+`help --sort name` is an error while `help projects --sort name` shows the projects help. Dates are inclusive UTC
+days; `--since` and `--until` may name the same day, and every day up to 2399-12-31 is accepted.
 
 Filters apply before sorting and limiting. Totals are computed before the row limit; the terminal states when rows
 were limited.

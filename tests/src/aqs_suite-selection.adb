@@ -101,6 +101,6 @@ begin
          end;
          Expect (Exit_Of (Report (Database, "indicator|tst-03")) = 2, "indicator IDs are case-sensitive");
          Expect (Exit_Of (Report (Database, "indicator|TST-03")) = 0, "a registered indicator resolves");
-      when others => null;
+      when others => raise Program_Error with "unhandled " & Id'Image;
    end case;
 end Selection;

@@ -2,8 +2,10 @@ with Ada.Calendar;
 with Ada.Containers.Indefinite_Vectors;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Storage;
+with Ada_Quality.Storage.Testing;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.CLI;
+with Ada_Quality_Summary.Options;
 
 --  Fixture builder: databases are produced only through supported Ada Quality publication APIs; corruption is
 --  applied only to disposable copies.
@@ -48,19 +50,22 @@ package Aqs_Fixtures is
       Policy         : UString := Ada.Strings.Unbounded.To_Unbounded_String ("policy-a");
       Toolchain      : UString := Ada.Strings.Unbounded.To_Unbounded_String ("toolchain-a");
       Status         : Assessment_Status := Assessment_Completed;
+      Unknown_Run    : Execution_Status := Blocked;
    end record;
    --  Shape of a synthetic assessment that satisfies the 33-indicator publication invariants.
    --  @field Violations Indicators that violate their requirement.
-   --  @field Unknowns Indicators whose execution is blocked.
+   --  @field Unknowns Indicators without usable evidence.
    --  @field Not_Applicable Indicators that do not apply.
    --  @field Findings Findings recorded for each violated indicator.
-   --  @field Fingerprint Fingerprint suffix; empty derives one from the indicator and index.
+   --  @field Fingerprint Identity context of each finding, so equal values give equal fingerprints across runs and
+   --  projects; empty derives one from the finding's index.
    --  @field Level Finding severity.
    --  @field Coverage TST-03 basis points.
    --  @field Source Source fingerprint.
    --  @field Policy Policy fingerprint.
    --  @field Toolchain Toolchain fingerprint.
    --  @field Status Terminal lifecycle state.
+   --  @field Unknown_Run Execution state of every unknown result: blocked, failed, or errored.
 
    function Build (Project_Id : Positive; Shape : Plan) return Assessment;
    --  Build a publishable assessment.
@@ -104,6 +109,13 @@ package Aqs_Fixtures is
    --  @param Value Assessment.
    --  @return Run identity.
 
+   function Publish_Legacy (Database : String; Value : Assessment) return Positive;
+   --  Publish an assessment in the legacy evidence format, without timestamps or finding locations, as runs
+   --  recorded before the schema migration were stored.
+   --  @param Database Database path.
+   --  @param Value Assessment.
+   --  @return Run identity.
+
    function Start (Database : String; Project_Id : Positive) return Positive;
    --  Start a running assessment.
    --  @param Database Database path.
@@ -136,7 +148,7 @@ package Aqs_Fixtures is
    --  @param Source Existing database.
    --  @param Target New path.
 
-   procedure Corrupt (Database : String; Run_Id : Positive; Kind : Ada_Quality.Storage.Testing_Corruption);
+   procedure Corrupt (Database : String; Run_Id : Positive; Kind : Ada_Quality.Storage.Testing.Corruption);
    --  Damage a disposable database copy.
    --  @param Database Disposable database.
    --  @param Run_Id Published run.
@@ -165,6 +177,11 @@ package Aqs_Fixtures is
    --  @param Left First capture.
    --  @param Right Second capture.
    --  @return True when identical.
+
+   function Arguments_Of (Arguments : String) return Ada_Quality_Summary.Options.String_Vectors.Vector;
+   --  Split space-separated arguments, or `|`-separated ones when any argument contains a space.
+   --  @param Arguments Arguments.
+   --  @return Argument vector.
 
    function Run (Arguments : String) return Ada_Quality_Summary.CLI.Outcome;
    --  Execute the CLI in-process with space-separated arguments.

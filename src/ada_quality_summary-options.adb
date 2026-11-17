@@ -4,6 +4,7 @@ with Ada_Quality_Summary.Text;
 
 package body Ada_Quality_Summary.Options is
    use Ada.Strings.Unbounded;
+   use Ada_Quality_Summary.Criteria;
    use Ada_Quality_Summary.Text;
    use type Ada.Calendar.Time;
 
@@ -40,18 +41,56 @@ package body Ada_Quality_Summary.Options is
    function Is_Historical (Command : Command_Kind) return Boolean is
      (Command in Trends_Command | History_Command);
 
+
    type Text_Access is access constant String;
 
-   Sort_Names : constant array (Sort_Key) of Text_Access :=
-     [Default_Sort => new String'("default"), Sort_Name => new String'("name"), Sort_Id => new String'("id"),
-      Sort_Path => new String'("path"), Sort_Quality => new String'("quality"),
-      Sort_Violations => new String'("violations"), Sort_Unknown => new String'("unknown"),
-      Sort_Findings => new String'("findings"), Sort_Affected => new String'("affected"),
-      Sort_Severity => new String'("severity"), Sort_Indicator => new String'("indicator"),
-      Sort_Project => new String'("project"), Sort_Kind => new String'("kind"), Sort_Run => new String'("run"),
-      Sort_State => new String'("state")];
+   type Option_Text is record
+      Spelling : Text_Access;
+      Value    : Text_Access;
+   end record;
 
-   function Image (Key : Sort_Key) return String is (Sort_Names (Key).all);
+   Option_Texts : constant array (Option_Kind) of Option_Text :=
+     [Database_Option        => (new String'("--database"), new String'("PATH")),
+      Format_Option          => (new String'("--format"), new String'("terminal|json")),
+      Color_Option           => (new String'("--color"), new String'("auto|always|never")),
+      No_Color_Option        => (new String'("--no-color"), new String'("")),
+      Layout_Option          => (new String'("--layout"), new String'("compact|normal|detailed")),
+      Width_Option           => (new String'("--width"), new String'("N")),
+      Include_Removed_Option => (new String'("--include-removed"), new String'("")),
+      Enabled_Only_Option    => (new String'("--enabled-only"), new String'("")),
+      Project_Option         => (new String'("--project"), new String'("PROJECT")),
+      Status_Option          => (new String'("--status"), new String'("STATUS")),
+      Sort_Option            => (new String'("--sort"), new String'("KEY")),
+      Reverse_Option         => (new String'("--reverse"), new String'("")),
+      Limit_Option           => (new String'("--limit"), new String'("N")),
+      Since_Option           => (new String'("--since"), new String'("DATE")),
+      Until_Option           => (new String'("--until"), new String'("DATE")),
+      Pretty_Option          => (new String'("--pretty"), new String'("")),
+      Help_Option            => (new String'("--help"), new String'("")),
+      Version_Option         => (new String'("--version"), new String'(""))];
+
+   function Spelling (Option : Option_Kind) return String is (Option_Texts (Option).Spelling.all);
+
+   function Value_Name (Option : Option_Kind) return String is (Option_Texts (Option).Value.all);
+
+   function Help_Key (Option : Option_Kind) return String is
+      Text : constant String := Spelling (Option);
+      Key  : String := Text (Text'First + 2 .. Text'Last);
+   begin
+      for C of Key loop
+         if C = '-' then
+            C := '_';
+         end if;
+      end loop;
+      return Key;
+   end Help_Key;
+
+   function Accepts (Command : Command_Kind; Option : Option_Kind) return Boolean is
+     (case Option is
+         when Project_Option | Status_Option => Is_Collection (Command),
+         when Since_Option | Until_Option => Is_Historical (Command),
+         when Sort_Option => (for some Key in Sort_Name .. Sort_Key'Last => Allowed (Command, Key)),
+         when others => True);
 
    function Allowed (Command : Command_Kind; Key : Sort_Key) return Boolean is
    begin
@@ -115,16 +154,8 @@ package body Ada_Quality_Summary.Options is
          then
             Fail ("error.invalid_date", [Arg ("value", Text)]);
          end if;
-         declare
-            Result : constant Ada.Calendar.Time :=
-              Ada.Calendar.Formatting.Time_Of (Year, Month, Day, 0, 0, 0, Time_Zone => 0);
-         begin
-            --  Time_Of normalizes nothing, but reject dates such as 2026-02-30 explicitly by round trip.
-            if Ada.Calendar.Formatting.Image (Result, Time_Zone => 0) (1 .. 10) /= Text then
-               Fail ("error.invalid_date", [Arg ("value", Text)]);
-            end if;
-            return Result;
-         end;
+         --  Time_Of raises Time_Error for a day the month does not have, such as 2026-02-30.
+         return Ada.Calendar.Formatting.Time_Of (Year, Month, Day, 0, 0, 0, Time_Zone => 0);
       end;
    exception
       when Ada.Calendar.Time_Error =>
@@ -263,24 +294,24 @@ package body Ada_Quality_Summary.Options is
          --  Handle a flag without a value; return False when Option is not a flag.
          function Flag_Option return Boolean is
          begin
-            if Option = "--help" then
+            if Option = Spelling (Help_Option) then
                Help_Flag := True;
-            elsif Option = "--version" then
+            elsif Option = Spelling (Version_Option) then
                Version_Flag := True;
-            elsif Option = "--include-removed" then
+            elsif Option = Spelling (Include_Removed_Option) then
                Flag (1, Option);
                Result.Include_Removed := True;
-            elsif Option = "--enabled-only" then
+            elsif Option = Spelling (Enabled_Only_Option) then
                Flag (2, Option);
                Result.Enabled_Only := True;
-            elsif Option = "--reverse" then
+            elsif Option = Spelling (Reverse_Option) then
                Flag (3, Option);
                Result.Reverse_Order := True;
-            elsif Option = "--pretty" then
+            elsif Option = Spelling (Pretty_Option) then
                Flag (4, Option);
                Result.Pretty := True;
-            elsif Option = "--no-color" then
-               Once (Result.Has_Color, "--color");
+            elsif Option = Spelling (No_Color_Option) then
+               Once (Result.Has_Color, Spelling (Color_Option));
                Result.Color := Color_Never;
             else
                return False;
@@ -292,25 +323,25 @@ package body Ada_Quality_Summary.Options is
          --  Handle an option that selects output presentation; return False when Option is not one.
          function Output_Option return Boolean is
          begin
-            if Option = "--format" then
+            if Option = Spelling (Format_Option) then
                Once (Has_Format, Option);
                Result.Format := Parse_Format (Option, Value);
-            elsif Option = "--color" then
+            elsif Option = Spelling (Color_Option) then
                Once (Result.Has_Color, Option);
                Result.Color := Parse_Color (Option, Value);
-            elsif Option = "--layout" then
+            elsif Option = Spelling (Layout_Option) then
                Once (Result.Has_Layout, Option);
                Result.Layout := Parse_Layout (Option, Value);
-            elsif Option = "--width" then
+            elsif Option = Spelling (Width_Option) then
                Once (Has_Width, Option);
                Result.Width := Parse_Natural (Option, Value);
                if Result.Width not in Minimum_Width .. Maximum_Width then
                   Fail ("error.width_range", [Arg ("minimum", Minimum_Width), Arg ("maximum", Maximum_Width)]);
                end if;
-            elsif Option = "--sort" then
+            elsif Option = Spelling (Sort_Option) then
                Once (Has_Sort, Option);
                Result.Sort := Parse_Sort (Value);
-            elsif Option = "--limit" then
+            elsif Option = Spelling (Limit_Option) then
                Once (Has_Limit, Option);
                Result.Limit := Parse_Natural (Option, Value);
             else
@@ -323,24 +354,24 @@ package body Ada_Quality_Summary.Options is
          --  not one.
          function Selection_Option return Boolean is
          begin
-            if Option = "--database" then
+            if Option = Spelling (Database_Option) then
                Once (Result.Has_Database, Option);
                Result.Database := To_Unbounded_String (Value);
                if Length (Result.Database) = 0 then
                   Fail ("error.empty_database");
                end if;
-            elsif Option = "--project" then
+            elsif Option = Spelling (Project_Option) then
                Once (Result.Has_Project, Option);
                Result.Project := To_Unbounded_String (Value);
-            elsif Option = "--status" then
+            elsif Option = Spelling (Status_Option) then
                Once (Result.Has_Status, Option);
                Result.Status := Parse_Status (Option, Value);
-            elsif Option = "--since" then
+            elsif Option = Spelling (Since_Option) then
                Once (Has_Since, Option);
                Result.Since := (Present => True, Value => Parse_Date (Value));
-            elsif Option = "--until" then
+            elsif Option = Spelling (Until_Option) then
                Once (Has_Until, Option);
-               Result.Until_Date := (Present => True, Value => Parse_Date (Value) + 86_400.0);
+               Result.Until_Date := (Present => True, Value => Parse_Date (Value));
             else
                return False;
             end if;
@@ -369,30 +400,36 @@ package body Ada_Quality_Summary.Options is
          end if;
       end Handle_Positional;
 
-      --  Reject targets, filters, and dates that the command does not accept.
-      procedure Check_Scope is
-         Command : constant String := Name (Result.Command);
+      --  A detail command needs its PROJECT or ID.
+      procedure Check_Target is
       begin
          if Result.Command in Project_Command | History_Command and then not Result.Has_Target then
-            Fail ("error.missing_project", [Arg ("command", Command)]);
+            Fail ("error.missing_project", [Arg ("command", Name (Result.Command))]);
          elsif Result.Command = Indicator_Command and then not Result.Has_Target then
             Fail ("error.missing_indicator");
-         elsif Result.Has_Project and then not Is_Collection (Result.Command) then
-            Fail ("error.option_not_allowed", [Arg ("option", "--project"), Arg ("command", Command)]);
-         elsif Result.Has_Status and then not Is_Collection (Result.Command) then
-            Fail ("error.option_not_allowed", [Arg ("option", "--status"), Arg ("command", Command)]);
+         end if;
+      end Check_Target;
+
+      procedure Check_Scope is
+      begin
+         if Result.Has_Project and then not Accepts (Result.Command, Project_Option) then
+            Fail ("error.option_not_allowed",
+                  [Arg ("option", Spelling (Project_Option)), Arg ("command", Name (Result.Command))]);
+         elsif Result.Has_Status and then not Accepts (Result.Command, Status_Option) then
+            Fail ("error.option_not_allowed",
+                  [Arg ("option", Spelling (Status_Option)), Arg ("command", Name (Result.Command))]);
          end if;
       end Check_Scope;
 
       --  Reject a date range the command does not accept or that is empty.
       procedure Check_Dates is
       begin
-         if (Has_Since or else Has_Until) and then not Is_Historical (Result.Command) then
+         if (Has_Since or else Has_Until) and then not Accepts (Result.Command, Since_Option) then
             Fail ("error.option_not_allowed",
-                  [Arg ("option", (if Has_Since then "--since" else "--until")),
+                  [Arg ("option", Spelling (if Has_Since then Since_Option else Until_Option)),
                    Arg ("command", Name (Result.Command))]);
          elsif Result.Since.Present and then Result.Until_Date.Present and then
-           Result.Since.Value >= Result.Until_Date.Value
+           Result.Since.Value > Result.Until_Date.Value
          then
             Fail ("error.date_order");
          end if;
@@ -403,13 +440,14 @@ package body Ada_Quality_Summary.Options is
          Command : constant String := Name (Result.Command);
       begin
          if Result.Format = JSON_Format and then (Result.Has_Layout or else Has_Width) then
-            Fail ("error.terminal_only", [Arg ("option", (if Result.Has_Layout then "--layout" else "--width"))]);
+            Fail ("error.terminal_only",
+                  [Arg ("option", Spelling (if Result.Has_Layout then Layout_Option else Width_Option))]);
          elsif Result.Format = Terminal_Format and then Result.Pretty then
-            Fail ("error.json_only", [Arg ("option", "--pretty")]);
+            Fail ("error.json_only", [Arg ("option", Spelling (Pretty_Option))]);
          elsif not Allowed (Result.Command, Result.Sort) then
             Fail ("error.sort_not_allowed", [Arg ("value", Image (Result.Sort)), Arg ("command", Command)]);
          elsif Result.Reverse_Order and then Result.Command = Help_Command then
-            Fail ("error.option_not_allowed", [Arg ("option", "--reverse"), Arg ("command", Command)]);
+            Fail ("error.option_not_allowed", [Arg ("option", Spelling (Reverse_Option)), Arg ("command", Command)]);
          end if;
       end Check_Presentation;
 
@@ -458,11 +496,29 @@ package body Ada_Quality_Summary.Options is
          end if;
          return Result.Command = Help_Command;
       end Resolve_Help_And_Version;
+      --  Help validates its options against the command it describes, or against help itself without a topic, so a
+      --  misplaced or misspelled option is reported rather than silently ignored.
+      procedure Check_Help_Options is
+         Topic : Command_Kind := Help_Command;
+      begin
+         if Result.Has_Target and then not Parse_Command (To_String (Result.Target), Topic) then
+            Topic := Help_Command;
+         end if;
+         Result.Command := Topic;
+         Check_Scope;
+         Check_Dates;
+         Check_Presentation;
+         Result.Command := Help_Command;
+      end Check_Help_Options;
    begin
       Read_Arguments;
       if Resolve_Help_And_Version then
+         if Result.Command = Help_Command then
+            Check_Help_Options;
+         end if;
          return Result;
       end if;
+      Check_Target;
       Check_Scope;
       Check_Dates;
       Check_Presentation;

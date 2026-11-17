@@ -1,6 +1,7 @@
 with Ada.Calendar;
 with Ada.Containers.Indefinite_Vectors;
 with Ada.Strings.Unbounded;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Limits;
 with Ada_Quality_Summary.Model;
 
@@ -70,48 +71,56 @@ package Ada_Quality_Summary.Options is
    --  @enum Normal_Layout Readable tables and aggregate sections.
    --  @enum Detailed_Layout Additional identities, descriptions, messages, and evidence.
 
-   type Sort_Key is
-     (Default_Sort, Sort_Name, Sort_Id, Sort_Path, Sort_Quality, Sort_Violations, Sort_Unknown, Sort_Findings,
-      Sort_Affected, Sort_Severity, Sort_Indicator, Sort_Project, Sort_Kind, Sort_Run, Sort_State);
-   --  Ordering selected by `--sort`.
-   --  @enum Default_Sort Command-specific default order.
-   --  @enum Sort_Name Project or indicator name.
-   --  @enum Sort_Id Project or indicator identity.
-   --  @enum Sort_Path Project path.
-   --  @enum Sort_Quality Quality priority.
-   --  @enum Sort_Violations Violation count, descending.
-   --  @enum Sort_Unknown Unknown count, descending.
-   --  @enum Sort_Findings Finding count, descending.
-   --  @enum Sort_Affected Affected-project count, descending.
-   --  @enum Sort_Severity Severity, descending.
-   --  @enum Sort_Indicator Indicator registry order.
-   --  @enum Sort_Project Project identity.
-   --  @enum Sort_Kind Regression classification.
-   --  @enum Sort_Run Run identity.
-   --  @enum Sort_State Result or lifecycle state.
+   type Option_Kind is
+     (Database_Option, Format_Option, Color_Option, No_Color_Option, Layout_Option, Width_Option,
+      Include_Removed_Option, Enabled_Only_Option, Project_Option, Status_Option, Sort_Option, Reverse_Option,
+      Limit_Option, Since_Option, Until_Option, Pretty_Option, Help_Option, Version_Option);
+   --  Every command-line option, in help order.
+   --  @enum Database_Option `--database PATH`.
+   --  @enum Format_Option `--format terminal|json`.
+   --  @enum Color_Option `--color auto|always|never`.
+   --  @enum No_Color_Option `--no-color`.
+   --  @enum Layout_Option `--layout compact|normal|detailed`.
+   --  @enum Width_Option `--width N`.
+   --  @enum Include_Removed_Option `--include-removed`.
+   --  @enum Enabled_Only_Option `--enabled-only`.
+   --  @enum Project_Option `--project PROJECT`.
+   --  @enum Status_Option `--status STATUS`.
+   --  @enum Sort_Option `--sort KEY`.
+   --  @enum Reverse_Option `--reverse`.
+   --  @enum Limit_Option `--limit N`.
+   --  @enum Since_Option `--since DATE`.
+   --  @enum Until_Option `--until DATE`.
+   --  @enum Pretty_Option `--pretty`.
+   --  @enum Help_Option `--help`.
+   --  @enum Version_Option `--version`.
 
-   function Image (Key : Sort_Key) return String;
-   --  Return the command-line spelling.
-   --  @param Key Sort key.
-   --  @return Lowercase key, or `default`.
+   function Spelling (Option : Option_Kind) return String;
+   --  Return the option as written on the command line.
+   --  @param Option Option.
+   --  @return Text such as `--database`.
 
-   function Allowed (Command : Command_Kind; Key : Sort_Key) return Boolean;
+   function Value_Name (Option : Option_Kind) return String;
+   --  Return the placeholder or choices of the option's value.
+   --  @param Option Option.
+   --  @return Text such as `PATH` or `terminal|json`, or empty for a flag.
+
+   function Help_Key (Option : Option_Kind) return String;
+   --  Return the message-catalog key suffix of the option's help line.
+   --  @param Option Option.
+   --  @return Spelling without the leading dashes, with underscores for dashes.
+
+   function Accepts (Command : Command_Kind; Option : Option_Kind) return Boolean;
+   --  Test whether a command accepts an option; the parser and the help text both apply this one rule.
+   --  @param Command Command.
+   --  @param Option Option.
+   --  @return True when the option is allowed with the command.
+
+   function Allowed (Command : Command_Kind; Key : Ada_Quality_Summary.Criteria.Sort_Key) return Boolean;
    --  Test whether a command supports a sort key.
    --  @param Command Command.
    --  @param Key Sort key.
    --  @return True when the key is supported.
-
-   type Date_Bound (Present : Boolean := False) is record
-      case Present is
-         when True =>
-            Value : Ada.Calendar.Time;
-         when False =>
-            null;
-      end case;
-   end record;
-   --  Optional instant derived from an inclusive ISO date.
-   --  @field Present Whether a date was supplied.
-   --  @field Value UTC instant: start of day for `--since`, start of the following day for `--until`.
 
    Minimum_Width : constant := 20;
    --  Narrowest accepted `--width`.
@@ -136,11 +145,11 @@ package Ada_Quality_Summary.Options is
       Has_Project     : Boolean := False;
       Has_Status      : Boolean := False;
       Status          : Ada_Quality_Summary.Model.Project_Quality_State := Ada_Quality_Summary.Model.Passing;
-      Sort            : Sort_Key := Default_Sort;
+      Sort            : Ada_Quality_Summary.Criteria.Sort_Key := Ada_Quality_Summary.Criteria.Default_Sort;
       Reverse_Order   : Boolean := False;
       Limit           : Natural := 0;
-      Since           : Date_Bound;
-      Until_Date      : Date_Bound;
+      Since           : Ada_Quality_Summary.Criteria.Date_Bound;
+      Until_Date      : Ada_Quality_Summary.Criteria.Date_Bound;
       Pretty          : Boolean := False;
    end record;
    --  Validated invocation.

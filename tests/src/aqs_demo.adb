@@ -21,7 +21,7 @@ procedure Aqs_Demo is
      ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
        Findings => Findings, Fingerprint => Null_Unbounded_String, Level => Level, Coverage => Coverage,
        Source => To_Unbounded_String ("source-a"), Policy => To_Unbounded_String (Policy),
-       Toolchain => To_Unbounded_String ("toolchain-a"), Status => Assessment_Completed));
+       Toolchain => To_Unbounded_String ("toolchain-a"), Status => Assessment_Completed, Unknown_Run => Blocked));
 begin
    if Ada.Command_Line.Argument_Count /= 1 then
       Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, "usage: aqs_demo DIRECTORY");

@@ -39,12 +39,12 @@ package body Unit_Tests is
       Items.Append ("violations");
       Parsed := Ada_Quality_Summary.Options.Parse (Items);
       Expect (Parsed.Command = Ada_Quality_Summary.Options.Projects_Command, "command after option");
-      Expect (Parsed.Sort = Ada_Quality_Summary.Options.Sort_Violations, "inline option values");
+      Expect (Parsed.Sort = Ada_Quality_Summary.Criteria.Sort_Violations, "inline option values");
       Expect (Parsed.Limit = 5 and then Parsed.Has_Status and then
               Parsed.Status = Ada_Quality_Summary.Model.Violations, "scalar options are parsed");
       Expect (Exit_Of (Run ("--version")) = 0 and then Contains (Output (Run ("--version")), "0.1.0"), "version");
-      Expect (Exit_Of (Run ("summary --format json --color always")) /= 2,
-              "terminal color options are ignored, not rejected, for JSON");
+      Expect (Exit_Of (Run ("--database|" & Standard_Database ("options") & "|summary|--format|json|--color|always"))
+                = 0, "terminal color options are ignored, not rejected, for JSON");
    end Option_Parsing;
 
    procedure Precedence is
@@ -52,6 +52,8 @@ package body Unit_Tests is
       Explicit  : constant String := Standard_Database ("precedence-explicit");
       From_Env  : constant String := New_Database ("precedence-env");
       Saved_Dir : constant String := Ada.Directories.Current_Directory;
+      Saved_Env : Saved_Variable := Saving ("ADA_QUALITY_DATABASE");
+      pragma Unreferenced (Saved_Env);
    begin
       Create (From_Env);
       Set_Env ("ADA_QUALITY_DATABASE", From_Env);
@@ -77,9 +79,8 @@ package body Unit_Tests is
          Expect (Exit_Of (Result) = 0, "the default database is read: " & Errors (Result));
       end;
    exception
-      when others =>  --  AQ: audited exception boundary -- restores the directory and environment, re-raises
+      when others =>  --  AQ: audited exception boundary -- restores the directory and re-raises
          Ada.Directories.Set_Directory (Saved_Dir);
-         Clear_Env ("ADA_QUALITY_DATABASE");
          raise;
    end Precedence;
 
@@ -137,11 +138,15 @@ package body Unit_Tests is
       --  Each report compares a project with its baseline at most once, and only when it shows regressions.
       declare
          function Comparisons_For (Arguments : String) return Natural is
-            Before : constant Natural := Ada_Quality_Summary.Trends.Comparisons;
-            Result : constant Ada_Quality_Summary.CLI.Outcome := Report (Database, Arguments);
+            Store : Ada_Quality_Summary.Repository.Repository;
          begin
-            Expect (Exit_Of (Result) = 0, Arguments & " succeeds");
-            return Ada_Quality_Summary.Trends.Comparisons - Before;
+            Ada_Quality_Summary.Repository.Open (Store, Database);
+            declare
+               Data : constant Ada_Quality_Summary.Repository.Snapshot := Ada_Quality_Summary.Repository.Load (Store);
+            begin
+               return Ada_Quality_Summary.Reports.Build
+                 (Data, Ada_Quality_Summary.Options.Parse (Arguments_Of (Arguments)), Database).Comparisons;
+            end;
          end Comparisons_For;
       begin
          Expect (Comparisons_For ("summary") = 3, "the summary compares each of three projects once");
@@ -174,7 +179,8 @@ package body Unit_Tests is
    end Properties;
 
    procedure Display is
-      package T renames Ada_Quality_Summary.Terminal;
+      package T renames Ada_Quality_Summary.Terminal.Cells;
+      package E renames Ada_Quality_Summary.Terminal.Environment;
       type Text_Access is access constant String;
       type Text_List is array (Positive range <>) of Text_Access;
       Narrow_Widths   : constant Text_List := [new String'("1"), new String'("4"), new String'("19")];
@@ -185,6 +191,9 @@ package body Unit_Tests is
       Wide : constant String := Character'Val (16#E6#) & Character'Val (16#BC#) & Character'Val (16#A2#);
       Mark : constant String := "e" & Character'Val (16#CC#) & Character'Val (16#81#);
       Red  : constant String := Character'Val (27) & "[31mred" & Character'Val (27) & "[0m";
+      Saved_Columns : Saved_Variable := Saving ("COLUMNS");
+      Saved_Locale  : Saved_Variable := Saving ("LC_ALL");
+      pragma Unreferenced (Saved_Columns, Saved_Locale);
    begin
       Expect (T.Display_Width (Wide & Wide & "ab") = 6, "East Asian wide characters take two cells");
       Expect (T.Display_Width (Mark) = 1, "combining characters take no cell");
@@ -196,14 +205,14 @@ package body Unit_Tests is
       Expect (T.Basis_Points_Image (9_123) = "91.23%", "basis points");
       Expect (T.Basis_Points_Image (5) = "0.05%", "small basis points");
       Expect (T.Basis_Points_Image (-150) = "-1.50%", "negative basis points");
-      Expect (T.Detect_Width (77) = 77, "an explicit width wins");
+      Expect (E.Detect_Width (77) = 77, "an explicit width wins");
       Set_Env ("COLUMNS", "93");
-      Expect (T.Detect_Width (0) in 1 .. 500, "a detected width is bounded");
+      Expect (E.Detect_Width (0) in 1 .. 500, "a detected width is bounded");
       Set_Env ("COLUMNS", "9999");
-      Expect (T.Detect_Width (0) <= 500, "the maximum width is enforced");
+      Expect (E.Detect_Width (0) <= 500, "the maximum width is enforced");
       for Narrow of Narrow_Widths loop
          Set_Env ("COLUMNS", Narrow.all);
-         Expect (T.Detect_Width (0) >= Ada_Quality_Summary.Options.Minimum_Width,
+         Expect (E.Detect_Width (0) >= Ada_Quality_Summary.Options.Minimum_Width,
                  "a detected width of " & Narrow.all & " is raised to the minimum");
       end loop;
       --  A child process writes to a pipe, so it takes its width from COLUMNS.
@@ -215,24 +224,18 @@ package body Unit_Tests is
             declare
                Result : constant Process_Result := Spawn ("--database|" & Database & "|" & Command.all);
                Text   : constant String := To_String (Result.Output);
-               Start  : Positive := Text'First;
+               Wider  : constant String := Wider_Line (Text, Ada_Quality_Summary.Options.Minimum_Width);
             begin
                Expect (Result.Status = 0, Command.all & " succeeds at COLUMNS=1");
-               for Index in Text'Range loop
-                  if Text (Index) = ASCII.LF then
-                     Expect (T.Display_Width (Text (Start .. Index - 1)) <= Ada_Quality_Summary.Options.Minimum_Width,
-                             Command.all & " fits the minimum width: " & Text (Start .. Index - 1));
-                     Start := Index + 1;
-                  end if;
-               end loop;
+               Expect (Wider = Absent, Command.all & " fits the minimum width: " & Wider);
             end;
          end loop;
       end;
       Clear_Env ("COLUMNS");
       Set_Env ("LC_ALL", "C");
-      Expect (not T.Unicode_Locale, "C locale is ASCII-only");
+      Expect (not E.Unicode_Locale, "C locale is ASCII-only");
       Set_Env ("LC_ALL", "en_US.UTF-8");
-      Expect (T.Unicode_Locale, "UTF-8 locale");
+      Expect (E.Unicode_Locale, "UTF-8 locale");
       Clear_Env ("LC_ALL");
    end Display;
 
@@ -290,9 +293,58 @@ package body Unit_Tests is
       Expect (Exit_Of (Report (Database, "trends|--since|2000-01-01|--until|2099-12-31")) = 0, "date filters");
    end Layouts;
 
+   --  Two projects with regressions whose runs interleave: a1, c1, b1, a2, c2, so run order and project order
+   --  differ, and a project with no regression in between.
+   function Ordering_Database return String is
+      Database : constant String := New_Database ("ordering");
+      Ignored  : Positive;
+      A, B, C  : Positive;
+   begin
+      Create (Database);
+      A := Register (Database, Parent (Database), "a");
+      B := Register (Database, Parent (Database), "b");
+      C := Register (Database, Parent (Database), "c");
+      Ignored := Publish (Database, Build (A, Shape (Coverage => 9_000)));
+      Ignored := Publish (Database, Build (C, Shape (Coverage => 9_100)));
+      Ignored := Publish (Database, Build (B, Shape (Coverage => 9_200)));
+      Ignored := Publish (Database, Build (A, Shape ("DOC-01 TST-01", Coverage => 8_000)));
+      Ignored := Publish (Database, Build (C, Shape ("DOC-02", Coverage => 8_100)));
+      return Database;
+   end Ordering_Database;
+
    procedure Sorting is
       Database : constant String := Standard_Database ("sorting");
+      Ordering : constant String := Ordering_Database;
+
+      function Q (Text : String) return String is ('"' & Text & '"');
    begin
+      Expect_Equal (Column (Json (Database, "summary"), "data.projects", "name"), """beta"",""alpha"",""gamma""",
+                    "overview priority: incomplete, violations, unassessed");
+      Expect_Equal (Column (Json (Database, "summary|--reverse"), "data.projects", "name"),
+                    """gamma"",""alpha"",""beta""", "--reverse reverses the whole ordering");
+      Expect_Equal (Column (Json (Database, "projects|--sort|id|--reverse"), "data.projects", "project_id"), "3,2,1",
+                    "identity order, reversed");
+      Expect_Equal (Column (Json (Database, "projects|--sort|path"), "data.projects", "name"),
+                    """alpha"",""beta"",""gamma""", "path order");
+      Expect_Equal (Column (Json (Ordering, "regressions"), "data.regressions", "project_id"), "1,1,1,1,1,3,3,3",
+                    "regressions default to project order");
+      Expect_Equal (Column (Json (Ordering, "regressions|--sort|project|--reverse"), "data.regressions", "project_id"),
+                    "3,3,3,1,1,1,1,1", "regressions by project, reversed");
+      Expect_Equal (Column (Json (Ordering, "regressions|--sort|indicator"), "data.regressions", "project_id"),
+                    "1,1,1,3,1,1,3,3", "regressions by indicator in registry order, then project");
+      Expect_Equal (Column (Json (Ordering, "regressions|--sort|kind"), "data.regressions", "project_id"),
+                    "1,3,1,3,1,1,1,3", "regressions by kind, then project");
+      Expect_Equal (Column (Json (Ordering, "regressions"), "data.regressions", "kind"),
+                    Q ("failed_gate") & "," & Q ("introduced_finding") & "," & Q ("worsened_metric") & "," &
+                    Q ("new_violation") & "," & Q ("introduced_finding") & "," &
+                    Q ("worsened_metric") & "," & Q ("new_violation") & "," & Q ("introduced_finding"),
+                    "gates, findings, and worsened metrics are classified");
+      Expect_Equal (Column (Json (Ordering, "trends"), "data.series[1].points", "run_id"), "1,2,3,4,5",
+                    "trend points default to run order");
+      Expect_Equal (Column (Json (Ordering, "trends|--sort|project"), "data.series[1].points", "project_id"),
+                    "1,1,2,3,3", "trend points by project");
+      Expect_Equal (Column (Json (Ordering, "trends|--sort|project"), "data.series[1].points", "run_id"),
+                    "1,4,3,2,5", "trend points by project, then run");
       Expect_Equal (Value (Json (Database, "summary"), "data.projects[0].name"), """beta""",
                     "overview priority: incomplete first");
       Expect_Equal (Value (Json (Database, "summary|--reverse"), "data.projects[0].name"), """gamma""",

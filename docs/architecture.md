@@ -10,7 +10,8 @@ Ada Quality Summary is a separate, read-only command-line application. Ownership
 
 The summary crate contains no table layout, payload decoder, schema knowledge, indicator definition, or history
 algorithm. It consumes typed records from `Ada_Quality.Reporting` and passes opaque history rows to
-`Ada_Quality.History` unchanged.
+`Ada_Quality.History` unchanged. Regressions come from `Ada_Quality.Reporting.Compare_Project` for the current
+(latest completed) assessment, and skipped predecessors are explained by `Ada_Quality.History.Incompatibility_Of`.
 
 ## Data flow
 
@@ -19,13 +20,16 @@ main ─▶ CLI.Execute
           │ Options.Parse                      strict argument validation (exit 2)
           │ Repository.Load ──▶ Ada_Quality.Reporting.Open
           │                       shared lock, one read transaction, decode, release
-          │ Reports.Build                      Filtering, Aggregation, Trends (pure, in memory)
+          │ Reports.Build                      Filtering, Aggregation, Trends (in memory)
           │ JSON.Render | Terminal.Render       complete text built in memory
           ▼
-        CLI.Run writes the finished text in one write (exit 0, or 3 on output failure)
+        CLI.Run writes the finished text (exit 0, or 3 on output failure)
 ```
 
 A snapshot is loaded once per invocation and never holds a database handle, cursor, or lock after `Load` returns.
+`Repository.Facts` derives each completed assessment's per-indicator states, totals, measurement kinds, and finding
+counts on first use and memoizes them in the snapshot, so overviews, trends, histories, and daily snapshots decode
+each assessment at most once.
 Report data is computed completely before rendering, and rendering completes before the first byte is written, so a
 computation error never leaves partial JSON on standard output.
 
@@ -34,18 +38,22 @@ computation error never leaves partial JSON on standard output.
 | Package | Responsibility |
 | ------- | -------------- |
 | `Ada_Quality_Summary` | Version constants and the three typed error categories. |
-| `.Limits` | Every reporting resource limit. |
-| `.Options` | Strict command-line parsing and validation. |
+| `.Limits` | Every reporting resource limit except the busy deadline, which belongs to `.Repository`. |
+| `.Criteria` | Sort keys and inclusive UTC-day bounds, shared by parsing, selection, history, and rendering. |
+| `.Options` | Strict command-line parsing and validation; the option table that help is generated from. |
 | `.Text` | User-visible message catalog rendered through `messages`. |
 | `.Rules` | Counting types: classification, newer-run and result states, indicator and portfolio totals. |
 | `.Rules.Counting` | SPARK-proved classification, tallying, and portfolio-total rules. |
-| `.Model` | Report records derived from `.Rules`; classification and indicator counting of decoded results. |
-| `.Repository` | Snapshot loading with bounded busy wait; project, run, and assessment indexes. |
+| `.Model` | Report records derived from `.Rules`; the one compliance-to-state mapping; baseline and snapshot records. |
+| `.Repository` | Snapshot loading with bounded busy wait; project, run, and assessment indexes; memoized run facts. |
 | `.Filtering` | Exact project and indicator resolution, population filters, deterministic sorting, row limits. |
 | `.Aggregation` | Project rows, portfolio totals, indicator matrix, finding collection. |
-| `.Trends` | Thin adapter over `Ada_Quality.History`: baselines, regressions, histories, metric series, daily states. |
+| `.Trends` | Adapter over `Ada_Quality.History`: baselines, regressions, histories, metric series, daily states. |
 | `.Reports` | Assembly of the single typed report that both renderers consume. |
-| `.Terminal` | Width-aware terminal rendering, display-cell measurement, color policy; terminal detection and size through `hostkit`. |
+| `.Terminal` | Width-aware terminal rendering of a report. |
+| `.Terminal.Environment` | Terminal detection, width, color policy, and locale, through `hostkit`. |
+| `.Terminal.Cells` | Display-cell measurement, truncation, and padding. |
+| `.Terminal.Output` | Private: the width-bounded output buffer, fields, notes, and tables. |
 | `.JSON` | Versioned JSON envelope and report-specific data objects. |
 | `.CLI` | Orchestration, database-path precedence, help, exit codes. |
 
@@ -72,7 +80,8 @@ exports of an unchanged database are byte-identical.
 
 ## Resource limits
 
-Every limit is declared in `Ada_Quality_Summary.Limits`; the units that enforce them refer to it.
+Every resource limit is declared in `Ada_Quality_Summary.Limits`, and the units that enforce them refer to it. The
+busy wait is a timing parameter of loading and is declared with it in `Repository`.
 
 | Limit | Default | Declared as | Enforced by |
 | ----- | ------- | ----------- | ----------- |
@@ -82,7 +91,15 @@ Every limit is declared in `Ada_Quality_Summary.Limits`; the units that enforce 
 | Terminal width | 500 columns | `Limits.Maximum_Width` | `Options.Maximum_Width` |
 | Displayed text field | 4,096 display cells | `Limits.Maximum_Field_Width` | `Terminal.Maximum_Field_Width` |
 | JSON document | 256 MiB | `Limits.Maximum_JSON_Bytes` | `JSON.Default_Maximum_Bytes` |
-| Busy wait for a writer | 1 second | `Repository.Default_Busy_Deadline` |
+| Result, measurement, execution, and event rows | 2,000,000 each | Ada Quality defaults | `Ada_Quality.Reporting.Load_Limits` |
+| Rows in all tables | 2,500,000 | Ada Quality default | `Ada_Quality.Reporting.Load_Limits` |
+| Persisted text | 256 MiB | Ada Quality default | `Ada_Quality.Reporting.Load_Limits` |
+| Busy wait for a writer | 1 second | `Repository.Default_Busy_Deadline` | `Repository.Load` |
+
+Each completed assessment stores 33 results, so the result-row limit admits about 60,000 completed assessments,
+fewer than the run limit; whichever limit a database reaches first is reported.
 
 Exceeding a load or JSON limit is a typed reporting failure (exit 3); machine-readable output is never truncated.
+The JSON limit is checked on the serialized document, because `jsonlib` serializes a complete document tree; the
+output is then written in slices without a further copy.
 Terminal text fields longer than the field limit are shortened with an ellipsis.

@@ -3,8 +3,8 @@ with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Finalization;
 with Ada.Strings.Fixed;
+with Ada_Quality.Finding_Identity;
 with Ada_Quality.Indicators;
-with Ada_Quality_Summary.Options;
 with GNAT.OS_Lib;
 with Project_Tools.Files;
 
@@ -87,7 +87,7 @@ package body Aqs_Fixtures is
                Item.Summary := To_Unbounded_String ("not applicable");
                Item.Measurement := (Kind => Unavailable_Value, Reason => To_Unbounded_String ("not applicable"));
             elsif Shape.Unknowns (Id) then
-               Item.Execution := Blocked;
+               Item.Execution := Shape.Unknown_Run;
                Item.Compliance := Unknown;
                Item.Summary := To_Unbounded_String ("evidence unavailable");
                Item.Measurement := (Kind => Unavailable_Value, Reason => To_Unbounded_String ("tool unavailable"));
@@ -107,7 +107,9 @@ package body Aqs_Fixtures is
                           (Finding'(Indicator => Id, Rule => To_Unbounded_String ("rule"), Level => Shape.Level,
                             Message => To_Unbounded_String ("finding" & Natural'Image (Index)),
                             Relative_Path => To_Unbounded_String ("src/file.adb"), Line => Index,
-                            Fingerprint => To_Unbounded_String (Image (Id) & ":" & Suffix)));
+                            Fingerprint => To_Unbounded_String
+                              (Ada_Quality.Finding_Identity.Create
+                                 (Id, "rule", "src/file.adb", "finding" & Natural'Image (Index), Context => Suffix))));
                      end;
                   end loop;
                end if;
@@ -160,6 +162,17 @@ package body Aqs_Fixtures is
       return Id;
    end Publish;
 
+   function Publish_Legacy (Database : String; Value : Assessment) return Positive is
+      Store : Ada_Quality.Storage.Store;
+      Id    : Positive;
+   begin
+      Ada_Quality.Storage.Open (Store, Database, Create_If_Missing => False);
+      Ada_Quality.Storage.Testing.Use_Legacy_Evidence (Store, True);
+      Id := Ada_Quality.Storage.Publish (Store, Value);
+      Ada_Quality.Storage.Close (Store);
+      return Id;
+   end Publish_Legacy;
+
    function Start (Database : String; Project_Id : Positive) return Positive is
       Store : Ada_Quality.Storage.Store;
       Id    : Positive;
@@ -198,7 +211,7 @@ package body Aqs_Fixtures is
       Store : Ada_Quality.Storage.Store;
    begin
       Ada_Quality.Storage.Open (Store, Database, Create_If_Missing => False);
-      Ada_Quality.Storage.Testing_Set_Schema_Version (Store, Version);
+      Ada_Quality.Storage.Testing.Set_Schema_Version (Store, Version);
       Ada_Quality.Storage.Close (Store);
    end Set_Schema;
 
@@ -210,11 +223,11 @@ package body Aqs_Fixtures is
       end if;
    end Copy_Database;
 
-   procedure Corrupt (Database : String; Run_Id : Positive; Kind : Ada_Quality.Storage.Testing_Corruption) is
+   procedure Corrupt (Database : String; Run_Id : Positive; Kind : Ada_Quality.Storage.Testing.Corruption) is
       Store : Ada_Quality.Storage.Store;
    begin
       Ada_Quality.Storage.Open (Store, Database, Create_If_Missing => False);
-      Ada_Quality.Storage.Testing_Corrupt (Store, Run_Id, Kind);
+      Ada_Quality.Storage.Testing.Corrupt (Store, Run_Id, Kind);
       Ada_Quality.Storage.Close (Store);
    end Corrupt;
 
@@ -260,7 +273,7 @@ package body Aqs_Fixtures is
       return True;
    end Same;
 
-   function Run (Arguments : String) return Ada_Quality_Summary.CLI.Outcome is
+   function Arguments_Of (Arguments : String) return Ada_Quality_Summary.Options.String_Vectors.Vector is
       Items : Ada_Quality_Summary.Options.String_Vectors.Vector;
       Start : Positive := Arguments'First;
       Split : constant Character := (if Ada.Strings.Fixed.Index (Arguments, "|") > 0 then '|' else ' ');
@@ -276,8 +289,11 @@ package body Aqs_Fixtures is
       if Start <= Arguments'Last then
          Items.Append (Arguments (Start .. Arguments'Last));
       end if;
-      return Ada_Quality_Summary.CLI.Execute (Items);
-   end Run;
+      return Items;
+   end Arguments_Of;
+
+   function Run (Arguments : String) return Ada_Quality_Summary.CLI.Outcome is
+     (Ada_Quality_Summary.CLI.Execute (Arguments_Of (Arguments)));
 
    function Output (Item : Ada_Quality_Summary.CLI.Outcome) return String is (To_String (Item.Output));
 

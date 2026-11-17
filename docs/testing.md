@@ -55,11 +55,23 @@ disabled, and removed projects, compatible and incompatible histories, and runni
 Additional cases cover option parsing, database-path precedence, aggregation properties (reordering projects or
 results never changes totals, indicator states sum to the population, filtering cannot introduce a result), display
 widths, the message catalog, JSON parse-and-serialize round trips, help topics, concurrent readers, a recovering
-writer, readers killed mid-report, layouts, and every sort key.
+writer, readers killed mid-report, layouts, and the complete ordering of every sort key. Review cases cover each
+baseline-selection reason, reintroduced findings and raised severities, the blocked, failed, and errored execution
+spellings, common violations and per-project regression counts, and input edges: the last representable `--until`
+day, help options checked against the topic, a shortened list of ambiguous matches, undated runs under `--until`, and
+corrupt baseline evidence exiting 4.
+
+Assertions read JSON through `Value`, which fails when a path is missing, so two missing fields never compare equal;
+`Value_Or_Absent` is used only where absence is the expected result. Group procedures raise for a test identity they
+do not handle, and environment variables a test changes are restored by a controlled guard even when it fails.
+`tests/src/aqs_schema.adb` validates the JSON Schema subset the report schemas use and reports any other keyword as
+unsupported; T032 feeds it one violation per supported keyword.
 
 Concurrency cases use separate operating-system processes: `tests/bin/aqs_writer` holds the writer lock, publishes
 assessments, or recovers interrupted runs while `bin/ada-quality-summary` reports. A report is either complete and
-internally consistent or a typed busy failure; it is never a mixture of generations.
+internally consistent or a typed busy failure; it is never a mixture of generations. The writer waits for files the
+test creates, not for fixed delays: it holds the lock until released, and pauses halfway through publishing until a
+report has observed the partial generation, so the cases do not depend on machine speed.
 
 ## Proof
 
@@ -73,8 +85,10 @@ unproved check in `Ada_Quality_Summary.Rules.Counting` fails the release. The pr
 instrumented executables substituted for spawned processes (`AQS_BINARY`, `AQS_TOOLS`), measures every unit in
 `src/`, and writes `coverage/gcov-summary.txt` in the `gcov-production-lines-v3` format, bound to the source and
 toolchain fingerprints Ada Quality's TST-03 checks. For v3, `gcov-dump` lists the sources each unit's compiler notes
-cover, and `Ada_Quality.Coverage.Has_Complete_Source_Records` requires a gcov record for every one of them. It fails below 90 percent. Set `AQS_TIMING` to print per-test
-durations.
+cover, and `Ada_Quality.Coverage.Has_Complete_Source_Records` requires a gcov record for every one of them. It
+deletes the previous evidence before measuring, so a failed run leaves none, and fails below 90 percent. Set
+`AQS_TIMING` to print per-test durations. `tests/bin/check_all` accepts the evidence only when its source and
+toolchain fingerprints match the current tree and toolchain.
 
 Ada Quality's own reporting tests live in `../ada_quality/tests/src/ada_quality_reporting_tests.adb` and run with
 `alr test` there.

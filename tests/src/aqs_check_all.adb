@@ -4,9 +4,11 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with GNAT.OS_Lib;
+with Ada_Quality.Checks;
 with Project_Tools.Files;
 with Project_Tools.Processes;
 with Project_Tools.Release_Checks;
+with Aqs_Evidence;
 with Aqs_Schema;
 
 --  Release checker: required structure, toolchain, validation build, GNATdoc, SPARK proof, staged pin-free release,
@@ -64,23 +66,29 @@ procedure Aqs_Check_All is
       end if;
    end Check_Structure;
 
-   --  Complete coverage evidence of at least 90 percent.
+   --  Complete coverage evidence of at least 90 percent, measured on the current sources with the current toolchain.
    procedure Check_Coverage_Evidence is
       Evidence : constant String := Project_Tools.Files.Join (Root, "coverage/gcov-summary.txt");
+
+      function Field (Name : String) return String is
+        (if Project_Tools.Files.File_Exists (Evidence) then Project_Tools.Files.Value_Of (Evidence, Name) else "");
+
+      function Count (Name : String) return Natural is
+        (if Field (Name)'Length in 1 .. 9 and then (for all C of Field (Name) => C in '0' .. '9')
+         then Natural'Value (Field (Name)) else 0);
    begin
-      if Project_Tools.Files.Value_Of (Evidence, "complete") /= "true" or else
-        Project_Tools.Files.Value_Of (Evidence, "inventory") /= "gcov-production-lines-v3"
-      then
+      if Field ("complete") /= "true" or else Field ("inventory") /= Aqs_Evidence.Inventory then
          Project_Tools.Release_Checks.Fail ("coverage evidence is incomplete; run tests/bin/aqs_coverage");
+      elsif Field ("source_fingerprint") /= Ada_Quality.Checks.Source_Fingerprint (Root) then
+         Project_Tools.Release_Checks.Fail
+           ("coverage evidence predates the current sources; run tests/bin/aqs_coverage");
+      elsif Field ("toolchain_fingerprint") /= Aqs_Evidence.Toolchain_Fingerprint (Root) then
+         Project_Tools.Release_Checks.Fail ("coverage evidence was measured with another toolchain");
+      elsif Count ("total") = 0 or else
+        Long_Long_Integer (Count ("covered")) * 10 < Long_Long_Integer (Count ("total")) * 9
+      then
+         Project_Tools.Release_Checks.Fail ("production line coverage is below 90%");
       end if;
-      declare
-         Covered : constant Natural := Natural'Value (Project_Tools.Files.Value_Of (Evidence, "covered"));
-         Total   : constant Natural := Natural'Value (Project_Tools.Files.Value_Of (Evidence, "total"));
-      begin
-         if Total = 0 or else Long_Long_Integer (Covered) * 10 < Long_Long_Integer (Total) * 9 then
-            Project_Tools.Release_Checks.Fail ("production line coverage is below 90%");
-         end if;
-      end;
    end Check_Coverage_Evidence;
 
    --  The Alire GNAT toolchain.

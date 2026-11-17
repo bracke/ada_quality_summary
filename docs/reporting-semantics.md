@@ -43,19 +43,19 @@ terminal overview keeps its total finding count; `problems` lists the groups.
 
 ## Regressions
 
-`Ada_Quality.History.Select_Comparison`, the decision the Ada Quality regressions command makes, selects the baseline
-for the current (latest completed) assessment. It prefers the newest earlier compatible completed run (same project,
-nonempty source fingerprints, equal policy and toolchain fingerprints). Failing that, a completed predecessor that
-differs only in policy is still compared, and `policy_changed` is true. Otherwise `comparison` gives the reason:
-`no_baseline`, `no_completed_baseline`, `toolchain_changed`, or `no_compatible_baseline`. The summary passes only the
-history through the current assessment, so a newer running or interrupted run never prevents a comparison.
-`Ada_Quality.History.Compare` classifies changes as
-`new_violation`, `worsened_metric`, `increased_severity`, `failed_gate`, `lost_evidence`, `introduced_finding`,
-`reintroduced_finding`, or `policy_induced_change`. Like the Ada Quality regressions command, the summary passes the
-findings of compatible runs older than the baseline, so a finding that returns from older evidence is
-`reintroduced_finding` rather than `introduced_finding`. The summary adds the project identity and explains every newer completed run that was
-skipped as incompatible (`policy_changed`, `toolchain_changed`, `missing_source_fingerprint`). Without a selected
-baseline the status is `no_baseline` and no regression is reported.
+`Ada_Quality.Reporting.Compare_Project (Item, Project_Id, Current_Id)` compares the current (latest completed)
+assessment; runs after it are ignored, so a newer running or interrupted run never prevents a comparison. Its baseline
+decision is `Ada_Quality.History.Select_Comparison`, the one the Ada Quality regressions command makes: the newest
+earlier compatible completed run (same project, nonempty source fingerprints, equal policy and available, equal
+toolchain fingerprints), or failing that a completed predecessor that differs only in policy, with `policy_changed`
+true. Otherwise `comparison` gives the reason: `no_baseline`, `no_completed_baseline`, `toolchain_changed`, or
+`no_compatible_baseline`. Changes are classified as `new_violation`, `worsened_metric`, `increased_severity`,
+`failed_gate`, `lost_evidence`, `introduced_finding`, `reintroduced_finding`, or `policy_induced_change`; findings of
+compatible runs older than the baseline make a returning finding `reintroduced_finding`. The summary adds the project
+identity and explains every completed run skipped between the baseline and the current assessment with
+`Ada_Quality.History.Incompatibility_Of` (`policy_changed`, `toolchain_changed`, or, for runs recorded before source
+fingerprints were required, `missing_source_fingerprint`). Without a selected baseline the status is `no_baseline`
+and no regression is reported.
 
 ## Trends
 

@@ -10,13 +10,13 @@ package body Integrity_Tests is
       procedure Damage is
       begin
          case Id is
-            when T011 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Duplicate_Result);
-            when T012 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Missing_Result);
-            when T013 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Invalid_Measurement);
-            when T038 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Malformed_Finding);
+            when T011 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Testing.Duplicate_Result);
+            when T012 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Testing.Missing_Result);
+            when T013 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Testing.Invalid_Measurement);
+            when T038 => Corrupt (Copy, Run_Id, Ada_Quality.Storage.Testing.Malformed_Finding);
             when T036 => Set_Schema (Copy, 2);
             when T037 => Set_Schema (Copy, 99);
-            when others => null;
+            when others => raise Program_Error with "unhandled " & Id'Image;
          end case;
       end Damage;
 
@@ -24,12 +24,12 @@ package body Integrity_Tests is
       function Diagnosis return String is
         (case Id is
             when T011 => "duplicate result",
-            when T012 => "missing result",
-            when T013 => "invalid number",
+            when T012 => "contradicts result execution",
+            when T013 => "noncanonical measurement",
             when T038 => "finding",
             when T036 => "migrate",
             when T037 => "unsupported schema version 99",
-            when others => "");
+            when others => raise Program_Error with "unhandled " & Id'Image);
    begin
       Create (Database);
       Project := Register (Database, Parent (Database), "alpha");

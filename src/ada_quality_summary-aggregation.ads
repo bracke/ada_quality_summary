@@ -2,7 +2,6 @@ with Ada_Quality.Reporting;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Repository;
-with Ada_Quality_Summary.Rules;
 
 --  Deterministic, side-effect-free aggregation of a snapshot into report records.
 --
@@ -34,25 +33,14 @@ package Ada_Quality_Summary.Aggregation is
    --  @return Totals.
 
    function Build_Portfolio
-     (Data : Ada_Quality_Summary.Repository.Snapshot; Projects : Ada_Quality_Summary.Model.Project_Vectors.Vector)
-      return Ada_Quality_Summary.Model.Portfolio_Summary;
+     (Projects : Ada_Quality_Summary.Model.Project_Vectors.Vector) return Ada_Quality_Summary.Model.Portfolio_Summary;
    --  Combine project rows and their totals.
-   --  @param Data Snapshot.
    --  @param Projects Selected project rows.
    --  @return Portfolio.
 
-   type Indicator_State is new Ada_Quality_Summary.Rules.Result_State;
-   --  One project's state for one indicator. The literals and their meaning are those of
-   --  Ada_Quality_Summary.Rules.Result_State.
-
-   function Image (State : Indicator_State) return String;
-   --  Return the stable spelling.
-   --  @param State State.
-   --  @return `pass`, `violation`, `unknown`, `not_applicable`, or `missing`.
-
    function State_Of
      (Data : Ada_Quality_Summary.Repository.Snapshot; Project : Ada_Quality_Summary.Model.Project_Summary;
-      Indicator : Ada_Quality.Types.Indicator_Id) return Indicator_State;
+      Indicator : Ada_Quality.Types.Indicator_Id) return Ada_Quality_Summary.Model.Indicator_State;
    --  Return a project's state for one indicator.
    --  @param Data Snapshot.
    --  @param Project Project row.

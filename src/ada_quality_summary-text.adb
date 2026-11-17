@@ -1,3 +1,4 @@
+with Ada.Containers.Indefinite_Ordered_Sets;
 with Ada.Strings.Fixed;
 with Messages.Arguments;
 with Messages.Result;
@@ -36,13 +37,13 @@ package body Ada_Quality_Summary.Text is
      "en.error.version_alone = --version takes no other arguments" & LF &
      "en.error.unknown_project = unknown project {project}" & LF &
      "en.error.ambiguous_project = project name {project} is ambiguous; matching project IDs: {ids}" & LF &
+     "en.error.more_matches = , and {count} more" & LF &
      "en.error.unknown_indicator = unknown indicator {indicator}" & LF &
      --  Runtime diagnostics.
      "en.error.prefix = ada-quality-summary: {message}" & LF &
      "en.error.hint = run ada-quality-summary help for usage" & LF &
      "en.error.output = cannot write report output: {message}" & LF &
      "en.error.json_size = JSON report of {size} bytes exceeds the limit of {limit} bytes" & LF &
-     "en.error.text_size = a text field exceeds the limit of {limit} display cells" & LF &
      "en.error.internal = internal error: {message}" & LF &
      "en.label.title = ADA QUALITY SUMMARY" & LF &
      "en.label.projects_column = Projects" & LF &
@@ -67,7 +68,7 @@ package body Ada_Quality_Summary.Text is
      "en.label.history_title = HISTORY {value}" & LF &
      "en.label.database = Database: {value}" & LF &
      "en.label.snapshot = Snapshot: {value}" & LF &
-     "en.label.population = Projects: {registered} registered, {enabled} enabled" & LF &
+     "en.label.population = Projects: {selected} selected, {enabled} enabled" & LF &
      "en.label.totals_line = Passing {passing}, violations {violations}, incomplete {incomplete}," &
        " unassessed {unassessed}" & LF &
      "en.label.showing = Showing {shown} of {total} rows" & LF &
@@ -225,9 +226,34 @@ package body Ada_Quality_Summary.Text is
      "en.help.opt.version = Show the version" & LF &
      "en.help.version = ada-quality-summary {version}" & LF;
 
+   package Key_Sets is new Ada.Containers.Indefinite_Ordered_Sets (Element_Type => String);
+
    Runtime : Messages.Runtime.Instance;
+   Keys    : Key_Sets.Set;
    Loaded  : Boolean := False;
    Valid   : Boolean := False;
+
+   --  Index the `en.` keys once, so a lookup does not rescan the catalog for every rendered label.
+   procedure Index_Keys is
+      Prefix : constant String := "en.";
+      Start  : Positive := Catalog'First;
+   begin
+      for Index in Catalog'Range loop
+         if Catalog (Index) = LF then
+            declare
+               Line : constant String := Catalog (Start .. Index - 1);
+               Mark : constant Natural := Ada.Strings.Fixed.Index (Line, " = ");
+            begin
+               if Mark > 0 and then Line'Length > Prefix'Length and then
+                 Line (Line'First .. Line'First + Prefix'Length - 1) = Prefix
+               then
+                  Keys.Include (Line (Line'First + Prefix'Length .. Mark - 1));
+               end if;
+            end;
+            Start := Index + 1;
+         end if;
+      end loop;
+   end Index_Keys;
 
    procedure Ensure_Loaded is
       Result : Messages.Runtime.Load_Result;
@@ -235,6 +261,7 @@ package body Ada_Quality_Summary.Text is
       if not Loaded then
          Messages.Runtime.Load_Text (Runtime, "ada-quality-summary", Catalog, Result);
          Valid := Result.Status = Messages.Runtime.Loaded;
+         Index_Keys;
          Loaded := True;
       end if;
    end Ensure_Loaded;
@@ -246,7 +273,10 @@ package body Ada_Quality_Summary.Text is
      (Arg (Name, Ada.Strings.Fixed.Trim (Long_Long_Integer'Image (Value), Ada.Strings.Both)));
 
    function Has_Message (Key : String) return Boolean is
-     (Ada.Strings.Fixed.Index (Catalog, LF & "en." & Key & " = ") > 0);
+   begin
+      Ensure_Loaded;
+      return Keys.Contains (Key);
+   end Has_Message;
 
    function Message (Key : String; Args : Argument_List := No_Arguments) return String is
       Values : Messages.Arguments.Arguments;

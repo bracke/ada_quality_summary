@@ -295,9 +295,41 @@ package body Aqs_Schema is
          return "";
       end Check_Object;
 
-      function Check (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+      --  Every keyword of Rule must be one this validator implements, with a value form it implements, so a schema
+      --  change the validator cannot check fails loudly instead of letting every document pass.
+      function Check_Keywords (Schema : Document_Access; Rule : Node; Path : String) return String is
+         S : Jsonlib.Documents.Document renames Schema.all;
+
+         function Known (Name : String) return Boolean is
+           (Name in "$ref" | "oneOf" | "const" | "enum" | "type" | "minimum" | "minLength" | "pattern" | "maxItems" |
+                    "items" | "properties" | "required" | "additionalProperties" | "$schema" | "$id" | "$defs" |
+                    "title" | "description");
       begin
-         if Schema.Has_Member (Rule, "$ref") then
+         if S.Kind (Rule) /= Object_Value then
+            return Path & ": unsupported schema form " & Jsonlib.Serializers.To_String (S, Rule);
+         end if;
+         for Index in 1 .. S.Length (Rule) loop
+            if not Known (S.Name (Rule, Index)) then
+               return Path & ": unsupported schema keyword " & S.Name (Rule, Index);
+            end if;
+         end loop;
+         if S.Has_Member (Rule, "additionalProperties") and then
+           (S.Kind (S.Member (Rule, "additionalProperties")) /= Boolean_Value or else
+            S.As_Boolean (S.Member (Rule, "additionalProperties")))
+         then
+            return Path & ": only additionalProperties: false is supported";
+         elsif S.Has_Member (Rule, "type") and then S.Kind (S.Member (Rule, "type")) /= String_Value then
+            return Path & ": only a single type name is supported";
+         end if;
+         return "";
+      end Check_Keywords;
+
+      function Check (Schema : Document_Access; Rule : Node; Value : Node; Path : String) return String is
+         Unsupported : constant String := Check_Keywords (Schema, Rule, Path);
+      begin
+         if Unsupported'Length > 0 then
+            return Unsupported;
+         elsif Schema.Has_Member (Rule, "$ref") then
             return Check_Ref (Schema, Rule, Value, Path);
          end if;
          declare

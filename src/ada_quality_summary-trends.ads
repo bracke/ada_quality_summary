@@ -1,8 +1,6 @@
-with Ada.Containers.Vectors;
-with Ada_Quality.History;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Model;
-with Ada_Quality_Summary.Options;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Repository;
 
 --  Thin adapter over Ada_Quality.History: baseline selection, regression comparison, histories, and metric trends.
@@ -13,72 +11,10 @@ with Ada_Quality_Summary.Repository;
 package Ada_Quality_Summary.Trends is
    --  Thin adapter over Ada_Quality.History.
 
-   type Baseline_Status is (No_Current_Assessment, No_Baseline, Compared);
-   --  Outcome of baseline selection for one project.
-   --  @enum No_Current_Assessment The project has no completed assessment.
-   --  @enum No_Baseline No comparable earlier assessment exists; the comparison status gives the reason.
-   --  @enum Compared The current assessment was compared with its selected baseline.
-
-   function Image (Status : Baseline_Status) return String;
-   --  Return the stable spelling.
-   --  @param Status Baseline status.
-   --  @return `no_current_assessment`, `no_baseline`, or `compared`.
-
-   type Exclusion_Reason is (Missing_Source_Fingerprint, Policy_Changed, Toolchain_Changed);
-   --  Why Ada_Quality.History.Compatible rejected an earlier completed assessment.
-   --  @enum Missing_Source_Fingerprint A source fingerprint is absent.
-   --  @enum Policy_Changed The policy fingerprint differs or is absent.
-   --  @enum Toolchain_Changed The toolchain fingerprint differs or is absent.
-
-   function Image (Status : Ada_Quality.History.Comparison_Status) return String;
-   --  Return the stable spelling of a baseline-selection decision made by Ada_Quality.History.Select_Comparison.
-   --  @param Status Selection decision.
-   --  @return Lowercase underscore spelling, such as `comparison_available` or `toolchain_changed`.
-
-   function Image (Reason : Exclusion_Reason) return String;
-   --  Return the stable spelling.
-   --  @param Reason Reason.
-   --  @return Lowercase underscore spelling.
-
-   type Excluded_Run is record
-      Run_Id : Positive;
-      Reason : Exclusion_Reason;
-   end record;
-   --  Earlier completed assessment skipped as an incompatible baseline.
-   --  @field Run_Id Skipped assessment.
-   --  @field Reason Incompatibility.
-
-   package Excluded_Run_Vectors is new Ada.Containers.Vectors
-     (Index_Type => Positive, Element_Type => Excluded_Run);
-   --  Skipped assessments, newest first.
-
-   type Baseline_Info is record
-      Project_Id      : Positive;
-      Status          : Baseline_Status := No_Current_Assessment;
-      Current_Run_Id  : Natural := 0;
-      Baseline_Run_Id : Natural := 0;
-      Comparison      : Ada_Quality.History.Comparison_Status := Ada_Quality.History.No_Assessments;
-      Policy_Changed  : Boolean := False;
-      Excluded        : Excluded_Run_Vectors.Vector;
-   end record;
-   --  Baseline selection for one project.
-   --  @field Project_Id Project.
-   --  @field Status Outcome.
-   --  @field Current_Run_Id Current completed assessment, or zero.
-   --  @field Baseline_Run_Id Selected baseline, or zero.
-   --  @field Comparison Ada_Quality.History.Select_Comparison decision for the current assessment.
-   --  @field Policy_Changed Whether the baseline was assessed under a different policy, so changes the policy caused
-   --  are classified as policy-induced.
-   --  @field Excluded Incompatible completed assessments newer than the baseline.
-
-   package Baseline_Info_Vectors is new Ada.Containers.Vectors
-     (Index_Type => Positive, Element_Type => Baseline_Info);
-   --  Baseline selections.
-
    procedure Regressions
      (Data       : Ada_Quality_Summary.Repository.Snapshot;
       Project_Id : Positive;
-      Baseline   : out Baseline_Info;
+      Baseline   : out Ada_Quality_Summary.Model.Baseline_Info;
       Changes    : out Ada_Quality_Summary.Model.Regression_Summary_Vectors.Vector);
    --  Compare a project's current assessment with the baseline Ada_Quality.History.Select_Comparison selects.
    --  @param Data Snapshot.
@@ -86,20 +22,15 @@ package Ada_Quality_Summary.Trends is
    --  @param Baseline Baseline selection.
    --  @param Changes Regressions classified by Ada_Quality.History.Compare.
 
-   function Comparisons return Natural;
-   --  Count the baseline comparisons Regressions has made in this program, so tests can show that a report compares
-   --  each project at most once.
-   --  @return Calls of Regressions so far.
-
    function History
      (Data : Ada_Quality_Summary.Repository.Snapshot; Project_Id : Positive;
-      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound; Undated : out Natural)
+      Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound; Undated : out Natural)
       return Ada_Quality_Summary.Model.History_Summary_Vectors.Vector;
    --  Return a project's runs, classified when completed, in ascending identity order.
    --  @param Data Snapshot.
    --  @param Project_Id Project.
-   --  @param Since Earliest included instant.
-   --  @param Until_Date Exclusive latest instant.
+   --  @param Since First included UTC day.
+   --  @param Until_Date Last included UTC day.
    --  @param Undated Runs without a persisted timestamp excluded by a date filter.
    --  @return Runs.
 
@@ -107,44 +38,33 @@ package Ada_Quality_Summary.Trends is
      (Data       : Ada_Quality_Summary.Repository.Snapshot;
       Projects   : Ada_Quality_Summary.Model.Project_Vectors.Vector;
       Indicator  : Ada_Quality.Types.Indicator_Id;
-      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound) return Ada_Quality_Summary.Model.Trend_Summary;
+      Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound) return Ada_Quality_Summary.Model.Trend_Summary;
    --  Build one numeric series from Ada_Quality.History.Metric_Trend, per project, against its current assessment.
    --  The series kind is the indicator's measurement kind, also when no observation is included; observations of
    --  another kind are excluded and counted.
    --  @param Data Snapshot.
    --  @param Projects Selected projects.
    --  @param Indicator Numeric indicator.
-   --  @param Since Earliest included instant.
-   --  @param Until_Date Exclusive latest instant.
+   --  @param Since First included UTC day.
+   --  @param Until_Date Last included UTC day.
    --  @return Series.
 
    function Undated_Runs
      (Data : Ada_Quality_Summary.Repository.Snapshot;
       Projects : Ada_Quality_Summary.Model.Project_Vectors.Vector;
-      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound) return Natural;
+      Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound) return Natural;
    --  Count the completed runs a date filter excludes because they have no persisted timestamp.
    --  @param Data Snapshot.
    --  @param Projects Selected projects.
-   --  @param Since Earliest included instant.
-   --  @param Until_Date Exclusive latest instant.
+   --  @param Since First included UTC day.
+   --  @param Until_Date Last included UTC day.
    --  @return Undated completed runs of Projects, or zero without a date filter.
-
-   type State_Snapshot is record
-      Day        : Ada_Quality_Summary.Model.UString;
-      Totals     : Ada_Quality_Summary.Model.Portfolio_Totals;
-   end record;
-   --  Last-known-state classification of the population at the end of one UTC day.
-   --  @field Day UTC date `YYYY-MM-DD`.
-   --  @field Totals Classification counts and indicator totals.
-
-   package State_Snapshot_Vectors is new Ada.Containers.Vectors
-     (Index_Type => Positive, Element_Type => State_Snapshot);
-   --  Daily snapshots in ascending date order.
 
    function Daily_States
      (Data : Ada_Quality_Summary.Repository.Snapshot;
       Projects : Ada_Quality_Summary.Model.Project_Vectors.Vector;
-      Since, Until_Date : Ada_Quality_Summary.Options.Date_Bound) return State_Snapshot_Vectors.Vector;
+      Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound)
+      return Ada_Quality_Summary.Model.State_Snapshot_Vectors.Vector;
    --  Classify the population at the end of each UTC day on which a dated completed assessment finished.
    --
    --  Each project counts with its latest completed assessment at or before the end of the day. Legacy runs without
@@ -152,7 +72,7 @@ package Ada_Quality_Summary.Trends is
    --  day is the day a dated run finished, so a legacy run precedes every snapshot day; no date is inferred for it.
    --  @param Data Snapshot.
    --  @param Projects Selected projects.
-   --  @param Since Earliest included instant.
-   --  @param Until_Date Exclusive latest instant.
+   --  @param Since First included UTC day.
+   --  @param Until_Date Last included UTC day.
    --  @return Snapshots; projects without a completed assessment by that day count as unassessed.
 end Ada_Quality_Summary.Trends;

@@ -1,4 +1,4 @@
-with Ada.Containers.Vectors;
+with Ada.Containers;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada_Quality.History;
@@ -9,20 +9,9 @@ package body Ada_Quality_Summary.Filtering is
    use Ada.Strings.Unbounded;
    use Ada_Quality.Types;
    use Ada_Quality_Summary.Model;
-   use Ada_Quality_Summary.Options;
+   use Ada_Quality_Summary.Criteria;
    use Ada_Quality_Summary.Text;
    use type Ada_Quality.History.Regression_Kind;
-
-   function Basename (Path : String) return String is
-      Slash : constant Natural := Ada.Strings.Fixed.Index (Path, "/", Ada.Strings.Backward);
-   begin
-      if Slash = 0 then
-         return Path;
-      elsif Slash = Path'Last and then Path'Length > 1 then
-         return Basename (Path (Path'First .. Path'Last - 1));
-      end if;
-      return Path (Slash + 1 .. Path'Last);
-   end Basename;
 
    function Parse_Project_Id (Text : String; Id : out Natural) return Boolean is
       Value : Natural := 0;
@@ -47,6 +36,8 @@ package body Ada_Quality_Summary.Filtering is
    is
       Candidates : constant Ada_Quality.Reporting.Project_Vectors.Vector :=
         Ada_Quality_Summary.Repository.Projects (Data, Include_Removed);
+      --  Exception messages are bounded, so an ambiguous name lists a few matching identities and counts the rest.
+      Listed     : constant := 8;
       Id         : Natural;
       Found      : Natural := 0;
       Count      : Natural := 0;
@@ -61,17 +52,22 @@ package body Ada_Quality_Summary.Filtering is
       end if;
       for Project of Candidates loop
          if Basename (To_String (Project.Path)) = Text then
-            if Count > 0 then
+            if Count in 1 .. Listed - 1 then
                Append (Matches, ", ");
             end if;
-            Append (Matches, Ada.Strings.Fixed.Trim (Positive'Image (Project.Id), Ada.Strings.Both));
+            if Count < Listed then
+               Append (Matches, Ada.Strings.Fixed.Trim (Positive'Image (Project.Id), Ada.Strings.Both));
+            end if;
             Found := Project.Id;
             Count := Count + 1;
          end if;
       end loop;
       if Count = 0 then
          raise Argument_Error with Message ("error.unknown_project", [Arg ("project", Text)]);
-      elsif Count > 1 then
+      elsif Count > Listed then
+         Append (Matches, Message ("error.more_matches", [Arg ("count", Long_Long_Integer (Count - Listed))]));
+      end if;
+      if Count > 1 then
          raise Argument_Error with
            Message ("error.ambiguous_project", [Arg ("project", Text), Arg ("ids", To_String (Matches))]);
       end if;
@@ -131,6 +127,8 @@ package body Ada_Quality_Summary.Filtering is
    procedure Sort_Regression_Rows is new Ordered_Sort (Regression_Summary, Regression_Summary_Vectors);
    procedure Sort_History_Rows is new Ordered_Sort (History_Summary, History_Summary_Vectors);
    procedure Sort_Point_Rows is new Ordered_Sort (Trend_Point, Trend_Point_Vectors);
+   procedure Sort_Row_Items is new Ordered_Sort (Indicator_Row, Indicator_Row_Vectors);
+   procedure Sort_Result_Items is new Ordered_Sort (Indicator_Result, Result_Vectors);
 
    function Name_Then_Id (Left, Right : Project_Summary) return Boolean is
      (if Left.Name /= Right.Name then Left.Name < Right.Name else Left.Project_Id < Right.Project_Id);
@@ -189,7 +187,8 @@ package body Ada_Quality_Summary.Filtering is
                return (if Left.Totals.Unknown_Count /= Right.Totals.Unknown_Count
                        then Left.Totals.Unknown_Count > Right.Totals.Unknown_Count else Left.Id < Right.Id);
             when Sort_Affected =>
-               return (if Left.Affected /= Right.Affected then Left.Affected > Right.Affected else Left.Id < Right.Id);
+               return (if Left.Totals.Violated /= Right.Totals.Violated
+                       then Left.Totals.Violated > Right.Totals.Violated else Left.Id < Right.Id);
             when others =>
                return Left.Id < Right.Id;
          end case;
@@ -208,6 +207,8 @@ package body Ada_Quality_Summary.Filtering is
       elsif Left.Run_Id /= Right.Run_Id then Left.Run_Id < Right.Run_Id
       elsif Left.Path /= Right.Path then Left.Path < Right.Path
       elsif Left.Line /= Right.Line then Left.Line < Right.Line
+      elsif Left.Rule /= Right.Rule then Left.Rule < Right.Rule
+      elsif Left.Level /= Right.Level then Left.Level < Right.Level
       else Left.Message < Right.Message);
 
    procedure Sort_Findings
@@ -287,4 +288,52 @@ package body Ada_Quality_Summary.Filtering is
       Sort_Point_Rows (Items, Less'Access, Reverse_Order);
    end Sort_Points;
 
+   function State_Rank (State : Indicator_State) return Positive is
+     (case State is
+         when Violation_State => 1,
+         when Unknown_State => 2,
+         when Missing_State => 3,
+         when Pass_State => 4,
+         when Not_Applicable_State => 5);
+
+   procedure Sort_Indicator_Rows
+     (Items : in out Indicator_Row_Vectors.Vector; Key : Sort_Key; Reverse_Order : Boolean)
+   is
+      function By_Name (Left, Right : Indicator_Row) return Boolean is (Name_Then_Id (Left.Project, Right.Project));
+
+      function Less (Left, Right : Indicator_Row) return Boolean is
+      begin
+         case Key is
+            when Sort_Id =>
+               return Left.Project.Project_Id < Right.Project.Project_Id;
+            when Sort_Name =>
+               return By_Name (Left, Right);
+            when others =>
+               return (if State_Rank (Left.State) /= State_Rank (Right.State)
+                       then State_Rank (Left.State) < State_Rank (Right.State)
+                       else By_Name (Left, Right));
+         end case;
+      end Less;
+   begin
+      Sort_Row_Items (Items, Less'Access, Reverse_Order);
+   end Sort_Indicator_Rows;
+
+   procedure Sort_Results (Items : in out Result_Vectors.Vector; Key : Sort_Key; Reverse_Order : Boolean) is
+      function Rank (Item : Indicator_Result) return Positive is (State_Rank (State_Of (Item.Compliance)));
+
+      function Less (Left, Right : Indicator_Result) return Boolean is
+        (if Key = Sort_State and then Rank (Left) /= Rank (Right) then Rank (Left) < Rank (Right)
+         else Left.Indicator < Right.Indicator);
+   begin
+      Sort_Result_Items (Items, Less'Access, Reverse_Order);
+   end Sort_Results;
+
+   package body Limiting is
+      procedure Limit (Items : in out Vectors.Vector; Count : Natural) is
+      begin
+         if Count > 0 and then Natural (Items.Length) > Count then
+            Items.Set_Length (Ada.Containers.Count_Type (Count));
+         end if;
+      end Limit;
+   end Limiting;
 end Ada_Quality_Summary.Filtering;

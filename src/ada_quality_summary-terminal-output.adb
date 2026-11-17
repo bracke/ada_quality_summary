@@ -1,8 +1,10 @@
 with Ada.Strings.Fixed;
+with Ada_Quality_Summary.Terminal.Cells;
 with Ada_Quality_Summary.Text;
 with Terminal_Styles;
 
 package body Ada_Quality_Summary.Terminal.Output is
+   use Ada_Quality_Summary.Terminal.Cells;
    use Ada.Strings.Unbounded;
    use Ada_Quality_Summary.Options;
 

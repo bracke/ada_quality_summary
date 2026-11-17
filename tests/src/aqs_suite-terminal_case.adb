@@ -71,6 +71,8 @@ procedure Terminal_Case (Id : Test_Id) is
 
    --  NO_COLOR and --no-color disable styling; status words remain.
    procedure No_Color is
+      Saved : Saved_Variable := Saving ("NO_COLOR");
+      pragma Unreferenced (Saved);
    begin
       Set_Env ("NO_COLOR", "1");
       Expect (not Has_Escape (Output (Report (Database, "summary|--color|auto"))), "NO_COLOR disables color");
@@ -89,6 +91,8 @@ procedure Terminal_Case (Id : Test_Id) is
 
    --  Redirected output is unstyled unless color is forced.
    procedure Redirected is
+      Saved : Saved_Variable := Saving ("NO_COLOR");
+      pragma Unreferenced (Saved);
    begin
       Clear_Env ("NO_COLOR");
       declare
@@ -107,6 +111,6 @@ begin
       when T029 => Unicode_Paths;
       when T030 => No_Color;
       when T031 => Redirected;
-      when others => null;
+      when others => raise Program_Error with "unhandled " & Id'Image;
    end case;
 end Terminal_Case;

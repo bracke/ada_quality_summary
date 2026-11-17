@@ -56,11 +56,12 @@ package body Limit_Tests is
             Name    : constant String := "p" & Ada.Strings.Fixed.Trim (Integer'Image (1_000 + Index), Ada.Strings.Both);
             Project : constant Positive := Register (Store, Parent (Database), Name);
          begin
-            case Index mod 4 is
-               when 0 => Ignored := Publish (Store, Build (Project, Shape));
-               when 1 => Ignored := Publish (Store, Build (Project, Shape ("DOC-01 SRC-0" &
-                                                              Character'Val (48 + Index mod 6 + 1))));
-               when 2 => Ignored := Publish (Store, Build (Project, Shape (Unknowns => "BLD-02")));
+            --  Distinct class sizes (16 passing, 12 violating, 8 incomplete, 4 unassessed), so a swapped total fails.
+            case Index mod 10 is
+               when 0 .. 3 => Ignored := Publish (Store, Build (Project, Shape));
+               when 4 .. 6 => Ignored := Publish (Store, Build (Project, Shape ("DOC-01 SRC-0" &
+                                                                   Character'Val (48 + Index mod 6 + 1))));
+               when 7 .. 8 => Ignored := Publish (Store, Build (Project, Shape (Unknowns => "BLD-02")));
                when others => null;
             end case;
          end;
@@ -73,10 +74,10 @@ package body Limit_Tests is
       begin
          Expect (First = Second, "large aggregation is deterministic");
          Expect_Equal (Value (First, "data.totals.projects"), "40", "every project is aggregated");
-         Expect_Equal (Value (First, "data.totals.passing"), "10", "passing count");
-         Expect_Equal (Value (First, "data.totals.violations"), "10", "violation count");
-         Expect_Equal (Value (First, "data.totals.incomplete"), "10", "incomplete count");
-         Expect_Equal (Value (First, "data.totals.unassessed"), "10", "unassessed count");
+         Expect_Equal (Value (First, "data.totals.passing"), "16", "passing count");
+         Expect_Equal (Value (First, "data.totals.violations"), "12", "violation count");
+         Expect_Equal (Value (First, "data.totals.incomplete"), "8", "incomplete count");
+         Expect_Equal (Value (First, "data.totals.unassessed"), "4", "unassessed count");
          Expect (Count_Of (First, "data.projects") = 40, "the overview lists every project without a limit");
          for Index in 0 .. 32 loop
             declare

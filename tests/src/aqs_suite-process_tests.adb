@@ -1,17 +1,28 @@
 separate (Aqs_Suite)
 package body Process_Tests is
+   --  Wait for a writer to report a state, failing the test when it never does.
    procedure Wait_For_Line (Path, Text : String) is
    begin
-      for Attempt in 1 .. 500 loop
-         exit when Ada.Directories.Exists (Path) and then Contains (Project_Tools.Files.Read_Raw_File (Path), Text);
+      for Attempt in 1 .. 6_000 loop
+         if Ada.Directories.Exists (Path) and then Contains (Project_Tools.Files.Read_Raw_File (Path), Text) then
+            return;
+         end if;
          delay 0.01;
       end loop;
+      Assert (False, "the writer reports " & Text);
    end Wait_For_Line;
+
+   --  Let a waiting writer continue.
+   procedure Signal (Path : String) is
+   begin
+      Project_Tools.Files.Write_Text_File (Path, "");
+   end Signal;
 
    procedure Locked_Writer is
       Database : constant String := Standard_Database ("T039");
       Log      : constant String := Parent (Database) & "/writer.out";
-      Args     : GNAT.OS_Lib.Argument_List_Access := Argument_List ("hold|" & Database & "|3");
+      Release  : constant String := Parent (Database) & "/release";
+      Args     : GNAT.OS_Lib.Argument_List_Access := Argument_List ("hold|" & Database & "|" & Release);
       Pid      : GNAT.OS_Lib.Process_Id;
       Done     : GNAT.OS_Lib.Process_Id;
       Success  : Boolean;
@@ -26,6 +37,7 @@ package body Process_Tests is
          Expect (Contains (To_String (Result.Output), "locked by another process"), "busy diagnostic");
          Expect (not Contains (To_String (Result.Output), "schema_version"), "no partial report is written");
       end;
+      Signal (Release);
       GNAT.OS_Lib.Wait_Process (Done, Success);
       Expect (Success and then GNAT.OS_Lib."=" (Done, Pid), "the writer completes normally");
       Expect (Spawn ("--database|" & Database & "|summary").Status = 0, "reporting succeeds after the writer");
@@ -34,12 +46,26 @@ package body Process_Tests is
    procedure Publishing_Writer is
       Database : constant String := Standard_Database ("T040");
       Log      : constant String := Parent (Database) & "/writer.out";
-      Args     : GNAT.OS_Lib.Argument_List_Access := Argument_List ("publish|" & Database & "|3|25");
+      Resume   : constant String := Parent (Database) & "/resume";
+      Args     : GNAT.OS_Lib.Argument_List_Access := Argument_List ("publish|" & Database & "|3|25|" & Resume);
       Pid      : GNAT.OS_Lib.Process_Id;
       Done     : GNAT.OS_Lib.Process_Id;
       Success  : Boolean;
       Reports     : Natural := 0;
       Points_Seen : Natural := 0;
+      Partial     : Boolean := False;
+
+      --  The overview row of gamma, the project the writer publishes to; rows are ordered by name.
+      function Gamma_Row (Text : String) return String is
+      begin
+         for Index in 0 .. Count_Of (Text, "data.projects") - 1 loop
+            if Value (Text, "data.projects[" & Image (Index) & "].name") = """gamma""" then
+               return "data.projects[" & Image (Index) & "].";
+            end if;
+         end loop;
+         Assert (False, "the overview lists gamma");
+         return "";
+      end Gamma_Row;
    begin
       Pid := GNAT.OS_Lib.Non_Blocking_Spawn (Tool ("aqs_writer"), Args.all, Log, Err_To_Out => True);
       GNAT.OS_Lib.Free (Args);
@@ -56,7 +82,8 @@ package body Process_Tests is
                          Int (Value (Text, "data.totals.incomplete")) +
                          Int (Value (Text, "data.totals.unassessed")) = 3,
                        "classification totals are consistent");
-               Expect (Value (Text, "data.projects[1].current_run_id") = Value (Text, "data.projects[1].latest_run_id"),
+               Expect (Value (Text, Gamma_Row (Text) & "current_run_id") =
+                         Value (Text, Gamma_Row (Text) & "latest_run_id"),
                        "the current run of a publishing project is its latest completed run");
             else
                Expect (Result.Status = 4 and then Contains (Text, "locked"), "only a typed busy failure is allowed");
@@ -76,14 +103,21 @@ package body Process_Tests is
                                 Image (5_001 + Index), "every publication of one generation, in order");
                   Points_Seen := Points_Seen + 1;
                end loop;
+               --  A report taken while the writer pauses halfway sees a partial generation; then it may go on.
+               if Count_Of (Text, "data.series[1].points") in 1 .. 24 and then not Partial then
+                  Partial := True;
+                  Signal (Resume);
+               end if;
             else
                Expect (Result.Status = 4 and then Contains (Text, "locked"), "only a typed busy failure is allowed");
             end if;
          end;
       end loop;
+      Signal (Resume);
       GNAT.OS_Lib.Wait_Process (Done, Success);
       Expect (Success, "the writer publishes every assessment: " & Project_Tools.Files.Read_Raw_File (Log));
       Expect (Reports > 0, "reports interleave with publication");
+      Expect (Partial, "a report ran while publication was in progress");
       Expect (Points_Seen > 0, "the generation check observed published measurements");
       if Ada.Environment_Variables.Exists ("AQS_TIMING") then
          Ada.Text_IO.Put_Line
@@ -143,7 +177,7 @@ package body Process_Tests is
          begin
             Expect (Result.Status in 0 | 4, "recovery yields a coherent report or a busy failure");
             if Result.Status = 0 then
-               Expect (Contains (To_String (Result.Output), """state"":""running""") or else
+               Expect (Contains (To_String (Result.Output), """state"":""running""") xor
                        Contains (To_String (Result.Output), """state"":""interrupted"""),
                        "the run is either still running or recovered, never both");
             end if;
@@ -158,6 +192,7 @@ package body Process_Tests is
    procedure Killed_Reader is
       Database : constant String := Standard_Database ("killed");
       Before   : constant File_State_Vectors.Vector := Capture (Parent (Database));
+      Killed   : Natural := 0;
    begin
       for Attempt in 1 .. 5 loop
          declare
@@ -171,16 +206,24 @@ package body Process_Tests is
             delay Duration (Attempt) * 0.002;
             GNAT.OS_Lib.Kill (Pid);
             GNAT.OS_Lib.Wait_Process (Done, Success);
+            --  A reader that finished before the signal exits successfully; only a terminated one counts.
+            if not Success then
+               Killed := Killed + 1;
+            end if;
          end;
       end loop;
+      Expect (Killed > 0, "at least one reader was terminated while running");
       Expect (Same (Before, Capture (Parent (Database))), "a terminated reader leaves the database unchanged");
+      --  A lock left behind by a terminated reader would make this exclusive open fail with Storage_Error.
       declare
          Store : Ada_Quality.Storage.Store;
       begin
          Ada_Quality.Storage.Open (Store, Database, Create_If_Missing => False);
          Ada_Quality.Storage.Close (Store);
+      exception
+         when Ada_Quality.Storage.Storage_Error =>
+            Assert (False, "the process lock is released when a reader is terminated");
       end;
-      Expect (True, "the process lock is released when a reader is terminated");
    end Killed_Reader;
 
    procedure Output_Failure is
@@ -201,7 +244,9 @@ package body Process_Tests is
       Database : constant String := Standard_Database ("T045");
       Traps    : constant String := Absolute (Dir ("T045-traps"));
       Log      : constant String := Traps & "/spawned.log";
-      Saved    : constant String := Ada.Environment_Variables.Value ("PATH", "");
+      Saved_Path : Saved_Variable := Saving ("PATH");
+      Saved_Log  : Saved_Variable := Saving ("AQS_TRAP_LOG");
+      pragma Unreferenced (Saved_Path, Saved_Log);
    begin
       for Name of Trap_Names loop
          Ada.Directories.Copy_File (Tool ("aqs_trap"), Traps & "/" & Name.all);
@@ -223,12 +268,6 @@ package body Process_Tests is
             end;
          end loop;
       end loop;
-      Set_Env ("PATH", Saved);
-      Clear_Env ("AQS_TRAP_LOG");
       Expect (not Ada.Directories.Exists (Log), "no assessment tool is spawned");
-   exception
-      when others =>  --  AQ: audited exception boundary -- restores PATH and re-raises
-         Set_Env ("PATH", Saved);
-         raise;
    end No_Tools;
 end Process_Tests;

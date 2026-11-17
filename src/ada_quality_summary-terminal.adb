@@ -1,21 +1,16 @@
 with Ada.Characters.Handling;
-with Ada.Environment_Variables;
+with Ada.Containers.Ordered_Maps;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada_Quality.History;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Types;
-with Ada_Quality_Summary.Aggregation;
 with Ada_Quality_Summary.Model;
+with Ada_Quality_Summary.Terminal.Cells;
+with Ada_Quality_Summary.Terminal.Environment;
 with Ada_Quality_Summary.Terminal.Output;
 with Ada_Quality_Summary.Text;
-with Ada_Quality_Summary.Trends;
-with Hostkit.Descriptors;
-with Hostkit.Terminal_Control;
-with Humanize.Status;
-with Humanize.Strings;
-with Terminal_Styles;
 
 package body Ada_Quality_Summary.Terminal is
    use Ada.Strings.Unbounded;
@@ -23,134 +18,18 @@ package body Ada_Quality_Summary.Terminal is
    use Ada_Quality_Summary.Model;
    use Ada_Quality_Summary.Options;
    use Ada_Quality_Summary.Reports;
+   use Ada_Quality_Summary.Terminal.Cells;
    use Ada_Quality_Summary.Terminal.Output;
    use type Ada_Quality.Reporting.Evidence_Format;
-   use type Ada_Quality_Summary.Trends.Baseline_Status;
-   subtype Unbounded_String is Ada.Strings.Unbounded.Unbounded_String;
-
-   Ellipsis : constant String := Character'Val (16#E2#) & Character'Val (16#80#) & Character'Val (16#A6#);
 
    ------------------------------------------------------------------------------------------------------------------
-   --  Environment
+   --  Values
    ------------------------------------------------------------------------------------------------------------------
-
-   --  Terminal detection and size come from hostkit, which answers portably for POSIX terminals and Windows consoles.
-   function Stdout_Is_Terminal return Boolean is
-     (Hostkit.Descriptors.Is_Terminal (Hostkit.Descriptors.Standard_Output));
-
-   --  A detected width of zero is unknown; any other width is held to the supported range, so a very narrow terminal
-   --  gets the minimum layout rather than a width the renderer does not support.
-   function Clamp (Value : Natural) return Positive is
-     (if Value = 0 then Default_Width
-      else Positive'Max (Options.Minimum_Width, Positive'Min (Value, Options.Maximum_Width)));
-
-   function Detect_Width (Explicit : Natural) return Positive is
-   begin
-      if Explicit > 0 then
-         return Clamp (Explicit);
-      end if;
-      if Stdout_Is_Terminal then
-         declare
-            Size : Hostkit.Terminal_Control.Window_Size;
-         begin
-            if Hostkit.Terminal_Control.Size (Hostkit.Descriptors.Standard_Output, Size) and then Size.Columns > 0
-            then
-               return Clamp (Size.Columns);
-            end if;
-         end;
-      end if;
-      if Ada.Environment_Variables.Exists ("COLUMNS") then
-         declare
-            Text : constant String := Ada.Environment_Variables.Value ("COLUMNS");
-         begin
-            if Text'Length in 1 .. 4 and then (for all C of Text => C in '0' .. '9') then
-               return Clamp (Natural'Value (Text));
-            end if;
-         end;
-      end if;
-      return Default_Width;
-   end Detect_Width;
-
-   function Use_Color (Mode : Color_Mode) return Boolean is
-   begin
-      Terminal_Styles.Set_Color_Policy
-        (case Mode is
-            when Color_Auto => Terminal_Styles.Color_Auto,
-            when Color_Always => Terminal_Styles.Color_Always,
-            when Color_Never => Terminal_Styles.Color_Never);
-      return Terminal_Styles.Color_Enabled (Destination_Is_Terminal => Stdout_Is_Terminal);
-   end Use_Color;
-
-   function Unicode_Locale return Boolean is
-      function Names_UTF8 (Variable : String) return Boolean is
-      begin
-         if not Ada.Environment_Variables.Exists (Variable) then
-            return False;
-         end if;
-         declare
-            Value : constant String := Ada.Characters.Handling.To_Lower (Ada.Environment_Variables.Value (Variable));
-         begin
-            return Ada.Strings.Fixed.Index (Value, "utf-8") > 0 or else Ada.Strings.Fixed.Index (Value, "utf8") > 0;
-         end;
-      end Names_UTF8;
-
-      function Set (Variable : String) return Boolean is
-        (Ada.Environment_Variables.Exists (Variable) and then Ada.Environment_Variables.Value (Variable)'Length > 0);
-   begin
-      --  The first nonempty variable in POSIX precedence order decides.
-      if Set ("LC_ALL") then
-         return Names_UTF8 ("LC_ALL");
-      elsif Set ("LC_CTYPE") then
-         return Names_UTF8 ("LC_CTYPE");
-      end if;
-      return Names_UTF8 ("LANG");
-   end Unicode_Locale;
-
-   ------------------------------------------------------------------------------------------------------------------
-   --  Display cells
-   ------------------------------------------------------------------------------------------------------------------
-
-   function Display_Width (Text : String) return Natural is (Humanize.Strings.ANSI_Display_Width (Text));
-
-   function Fit (Text : String; Width : Natural; Unicode : Boolean) return String is
-   begin
-      if Display_Width (Text) <= Width then
-         return Text;
-      elsif Width = 0 then
-         return "";
-      elsif Width < 3 and then not Unicode then
-         return [1 .. Width => '.'];
-      end if;
-      declare
-         Result : constant Humanize.Status.Text_Result :=
-           Humanize.Strings.Truncate_Display_Width (Text, Width, (if Unicode then Ellipsis else "..."));
-      begin
-         if Humanize.Status.Is_Ok (Result) and then Display_Width (To_String (Result.Text)) <= Width then
-            return To_String (Result.Text);
-         end if;
-         return [1 .. Width => '.'];
-      end;
-   end Fit;
-
-   function Pad (Text : String; Width : Natural; Right : Boolean := False) return String is
-      Used : constant Natural := Display_Width (Text);
-      Fill : constant String := (if Used >= Width then "" else [1 .. Width - Used => ' ']);
-   begin
-      return (if Right then Fill & Text else Text & Fill);
-   end Pad;
 
    function Trimmed (Value : Long_Long_Integer) return String is
      (Ada.Strings.Fixed.Trim (Long_Long_Integer'Image (Value), Ada.Strings.Both));
 
    function Num (Value : Natural) return String is (Trimmed (Long_Long_Integer (Value)));
-
-   function Basis_Points_Image (Value : Long_Long_Integer) return String is
-      Magnitude : constant Long_Long_Integer := abs Value;
-      Fraction  : constant Long_Long_Integer := Magnitude mod 100;
-   begin
-      return (if Value < 0 then "-" else "") & Trimmed (Magnitude / 100) & "." &
-        (if Fraction < 10 then "0" else "") & Trimmed (Fraction) & "%";
-   end Basis_Points_Image;
 
    ------------------------------------------------------------------------------------------------------------------
    --  Labels
@@ -164,8 +43,8 @@ package body Ada_Quality_Summary.Terminal is
    function Quality_Label (State : Project_Quality_State; Short : Boolean := False) return String is
      (Ada_Quality_Summary.Text.Message ((if Short then "short." else "quality.") & Image (State)));
 
-   function State_Label (State : Aggregation.Indicator_State) return String is
-     (Ada_Quality_Summary.Text.Message ("state." & Aggregation.Image (State)));
+   function State_Label (State : Indicator_State) return String is
+     (Ada_Quality_Summary.Text.Message ("state." & Image (State)));
 
    function Lower (Text : String) return String renames Ada.Characters.Handling.To_Lower;
 
@@ -215,19 +94,31 @@ package body Ada_Quality_Summary.Terminal is
          when Incomplete => Warn_Role,
          when Unassessed => Muted_Role);
 
-   function State_Role (State : Aggregation.Indicator_State) return Role_Kind is
+   function State_Role (State : Indicator_State) return Role_Kind is
      (case State is
-         when Aggregation.Pass_State => Good_Role,
-         when Aggregation.Violation_State => Bad_Role,
-         when Aggregation.Unknown_State => Warn_Role,
-         when Aggregation.Not_Applicable_State | Aggregation.Missing_State => Muted_Role);
+         when Pass_State => Good_Role,
+         when Violation_State => Bad_Role,
+         when Unknown_State => Warn_Role,
+         when Not_Applicable_State | Missing_State => Muted_Role);
 
-   function Compliance_State (Value : Compliance_Status) return Aggregation.Indicator_State is
-     (case Value is
-         when Pass => Aggregation.Pass_State,
-         when Violation => Aggregation.Violation_State,
-         when Unknown => Aggregation.Unknown_State,
-         when Compliance_Status'(Not_Applicable) => Aggregation.Not_Applicable_State);
+   package Name_Maps is new Ada.Containers.Ordered_Maps
+     (Key_Type => Positive, Element_Type => Ada.Strings.Unbounded.Unbounded_String);
+
+   --  Project names by identity, built once per report for the tables that label rows by project.
+   function Names_Of (Item : Report) return Name_Maps.Map is
+      Result : Name_Maps.Map;
+   begin
+      for P of Item.Portfolio.Projects loop
+         Result.Include (P.Project_Id, P.Name);
+      end loop;
+      if Item.Metadata.Kind in Model.Project_Report | Model.History_Report then
+         Result.Include (Item.Project.Project_Id, Item.Project.Name);
+      end if;
+      return Result;
+   end Names_Of;
+
+   function Name_Of (Names : Name_Maps.Map; Project_Id : Positive) return String is
+     (if Names.Contains (Project_Id) then To_String (Names.Element (Project_Id)) else Num (Project_Id));
 
    ------------------------------------------------------------------------------------------------------------------
    --  Sections
@@ -296,7 +187,7 @@ package body Ada_Quality_Summary.Terminal is
       Note (Out_Text, L ("database", To_String (Item.Database_Label)), Indent => 0);
       Note (Out_Text, Ada_Quality_Summary.Text.Message
               ("label.population",
-               [Ada_Quality_Summary.Text.Arg ("registered", Long_Long_Integer (Item.Portfolio.Totals.Projects)),
+               [Ada_Quality_Summary.Text.Arg ("selected", Long_Long_Integer (Item.Portfolio.Totals.Projects)),
                 Ada_Quality_Summary.Text.Arg ("enabled", Long_Long_Integer (Item.Portfolio.Totals.Enabled))]),
             Indent => 0);
       if Out_Text.Style.Layout = Detailed_Layout then
@@ -364,7 +255,7 @@ package body Ada_Quality_Summary.Terminal is
    end Projects_Report;
 
    procedure Finding_Table (Out_Text : in out Writer; Findings : Finding_Summary_Vectors.Vector;
-                            Item : Report; With_Project : Boolean) is
+                            Names : Name_Maps.Map; With_Project : Boolean) is
       Columns : Column_Vectors.Vector;
       Rows    : Row_Vectors.Vector;
    begin
@@ -377,20 +268,11 @@ package body Ada_Quality_Summary.Terminal is
                                                                      then 4 else 2), Minimum => 10));
       for F of Findings loop
          declare
-            Row  : Cell_Vectors.Vector;
-            Name : Unbounded_String := To_Unbounded_String (Num (F.Project_Id));
+            Row : Cell_Vectors.Vector;
          begin
-            for P of Item.Portfolio.Projects loop
-               if P.Project_Id = F.Project_Id then
-                  Name := P.Name;
-               end if;
-            end loop;
-            if Item.Metadata.Kind = Model.Project_Report and then Item.Project.Project_Id = F.Project_Id then
-               Name := Item.Project.Name;
-            end if;
             Row.Append (C (Severity_Label (F.Level), (if F.Level >= High then Bad_Role else Warn_Role)));
             Row.Append (C (Image (F.Indicator)));
-            Row.Append (C (To_String (Name)));
+            Row.Append (C (Name_Of (Names, F.Project_Id)));
             Row.Append (C (if Length (F.Path) = 0 then "-"
                           elsif F.Line = 0 then To_String (F.Path)
                           else To_String (F.Path) & ":" & Num (F.Line)));
@@ -407,7 +289,7 @@ package body Ada_Quality_Summary.Terminal is
    end Finding_Table;
 
    procedure Regression_Table (Out_Text : in out Writer; Changes : Regression_Summary_Vectors.Vector;
-                               Item : Report) is
+                               Names : Name_Maps.Map) is
       Columns : Column_Vectors.Vector;
       Rows    : Row_Vectors.Vector;
    begin
@@ -420,15 +302,9 @@ package body Ada_Quality_Summary.Terminal is
       Columns.Append (Col (L ("run"), Right => True, Priority => 3));
       for Change of Changes loop
          declare
-            Row  : Cell_Vectors.Vector;
-            Name : Unbounded_String := To_Unbounded_String (Num (Change.Project_Id));
+            Row : Cell_Vectors.Vector;
          begin
-            for P of Item.Portfolio.Projects loop
-               if P.Project_Id = Change.Project_Id then
-                  Name := P.Name;
-               end if;
-            end loop;
-            Row.Append (C (To_String (Name)));
+            Row.Append (C (Name_Of (Names, Change.Project_Id)));
             Row.Append (C (Image (Change.Indicator)));
             Row.Append (C (Kind_Label (Change.Kind), Bad_Role));
             Row.Append (C (Ada.Strings.Fixed.Trim (To_String (Change.Before), Ada.Strings.Both)));
@@ -445,14 +321,14 @@ package body Ada_Quality_Summary.Terminal is
       end if;
    end Regression_Table;
 
-   procedure Baseline_Lines (Out_Text : in out Writer; Info : Trends.Baseline_Info; Name : String) is
+   procedure Baseline_Lines (Out_Text : in out Writer; Info : Baseline_Info; Name : String) is
    begin
       case Info.Status is
-         when Trends.No_Current_Assessment =>
+         when No_Current_Assessment =>
             Note (Out_Text, Name & ": " & L ("baseline.no_current"));
-         when Trends.No_Baseline =>
-            Note (Out_Text, Name & ": " & L ("baseline.none", L ("comparison." & Trends.Image (Info.Comparison))));
-         when Trends.Compared =>
+         when No_Baseline =>
+            Note (Out_Text, Name & ": " & L ("baseline.none", L ("comparison." & Image (Info.Comparison))));
+         when Compared =>
             Note (Out_Text, Name & ": " & L ((if Info.Policy_Changed then "baseline.policy_changed"
                                                else "baseline.compared"), Num (Info.Baseline_Run_Id)));
       end case;
@@ -460,7 +336,7 @@ package body Ada_Quality_Summary.Terminal is
          Note (Out_Text, "  " & Ada_Quality_Summary.Text.Message
                  ("label.baseline.excluded",
                   [Ada_Quality_Summary.Text.Arg ("run", Long_Long_Integer (Run.Run_Id)),
-                   Ada_Quality_Summary.Text.Arg ("reason", L ("reason." & Trends.Image (Run.Reason)))]));
+                   Ada_Quality_Summary.Text.Arg ("reason", L ("reason." & Image (Run.Reason)))]));
       end loop;
    end Baseline_Lines;
 
@@ -523,7 +399,7 @@ package body Ada_Quality_Summary.Terminal is
             begin
                Row.Append (C (Image (R.Indicator)));
                Row.Append
-                 (C (State_Label (Compliance_State (R.Compliance)), State_Role (Compliance_State (R.Compliance))));
+                 (C (State_Label (State_Of (R.Compliance)), State_Role (State_Of (R.Compliance))));
                Row.Append (C (Ada_Quality.Indicators.Registry (R.Indicator).Name.all));
                Row.Append (C (Image (R.Execution)));
                Row.Append (C (Measurement_Text (R.Indicator, R.Measurement)));
@@ -537,7 +413,7 @@ package body Ada_Quality_Summary.Terminal is
       if Out_Text.Style.Layout /= Compact_Layout then
          Blank (Out_Text);
          Heading (Out_Text, L ("findings_heading"));
-         Finding_Table (Out_Text, Item.Findings, Item, With_Project => False);
+         Finding_Table (Out_Text, Item.Findings, Names_Of (Item), With_Project => False);
          Shown_Note (Out_Text, Natural (Item.Findings.Length), Item.Finding_Total);
       end if;
       if Out_Text.Style.Layout = Detailed_Layout then
@@ -550,7 +426,7 @@ package body Ada_Quality_Summary.Terminal is
       Blank (Out_Text);
       Heading (Out_Text, L ("regressions_heading"));
       Baseline_Lines (Out_Text, Item.Baselines.First_Element, To_String (P.Name));
-      Regression_Table (Out_Text, Item.Regressions, Item);
+      Regression_Table (Out_Text, Item.Regressions, Names_Of (Item));
    end Project_Report;
 
    procedure Indicators_Report (Out_Text : in out Writer; Item : Report) is
@@ -674,7 +550,7 @@ package body Ada_Quality_Summary.Terminal is
       end if;
       Blank (Out_Text);
       Heading (Out_Text, L ("findings_heading"));
-      Finding_Table (Out_Text, Item.Findings, Item, With_Project => True);
+      Finding_Table (Out_Text, Item.Findings, Names_Of (Item), With_Project => True);
       Shown_Note (Out_Text, Natural (Item.Findings.Length), Item.Finding_Total);
    end Problems_Report;
 
@@ -685,29 +561,25 @@ package body Ada_Quality_Summary.Terminal is
       Note (Out_Text, L ("projects_with_regressions", Num (Item.Projects_Affected)));
       Note (Out_Text, L ("regression_count", Num (Item.Regression_Total)));
       Blank (Out_Text);
-      Regression_Table (Out_Text, Item.Regressions, Item);
+      Regression_Table (Out_Text, Item.Regressions, Names_Of (Item));
       Shown_Note (Out_Text, Natural (Item.Regressions.Length), Item.Regression_Total);
       Blank (Out_Text);
       Heading (Out_Text, L ("baselines"));
-      for Info of Item.Baselines loop
-         declare
-            Name : Unbounded_String := To_Unbounded_String (Num (Info.Project_Id));
-         begin
-            for P of Item.Portfolio.Projects loop
-               if P.Project_Id = Info.Project_Id then
-                  Name := P.Name;
-               end if;
-            end loop;
-            if Info.Status /= Trends.Compared or else Info.Policy_Changed or else not Info.Excluded.Is_Empty or else
+      declare
+         Names : constant Name_Maps.Map := Names_Of (Item);
+      begin
+         for Info of Item.Baselines loop
+            if Info.Status /= Compared or else Info.Policy_Changed or else not Info.Excluded.Is_Empty or else
               Out_Text.Style.Layout = Detailed_Layout
             then
-               Baseline_Lines (Out_Text, Info, To_String (Name));
+               Baseline_Lines (Out_Text, Info, Name_Of (Names, Info.Project_Id));
             end if;
-         end;
-      end loop;
+         end loop;
+      end;
    end Regressions_Report;
 
    procedure Trends_Report (Out_Text : in out Writer; Item : Report) is
+      Names : constant Name_Maps.Map := Names_Of (Item);
    begin
       Header (Out_Text, Item, L ("trends"));
       if Item.Undated > 0 then
@@ -771,16 +643,10 @@ package body Ada_Quality_Summary.Terminal is
                   Columns.Append (Col (L ("observed"), Priority => 2));
                   for Point of Series.Points loop
                      declare
-                        Row  : Cell_Vectors.Vector;
-                        Name : Unbounded_String := To_Unbounded_String (Num (Point.Project_Id));
+                        Row : Cell_Vectors.Vector;
                      begin
-                        for P of Item.Portfolio.Projects loop
-                           if P.Project_Id = Point.Project_Id then
-                              Name := P.Name;
-                           end if;
-                        end loop;
                         Row.Append (C (Num (Point.Run_Id)));
-                        Row.Append (C (To_String (Name)));
+                        Row.Append (C (Name_Of (Names, Point.Project_Id)));
                         Row.Append (C (if Series.Kind = Decimal_Value then Basis_Points_Image (Point.Value)
                                        else Trimmed (Point.Value)));
                         Row.Append (C (Time_Text (Point.Observed)));
@@ -845,7 +711,7 @@ package body Ada_Quality_Summary.Terminal is
    function Render (Item : Report; Style : Settings) return String is
       Out_Text : Writer := (Text => Null_Unbounded_String, Style => Style);
    begin
-      Out_Text.Style.Width := Positive'Max (Options.Minimum_Width, Positive'Min (Style.Width, Options.Maximum_Width));
+      Out_Text.Style.Width := Environment.Clamp (Style.Width);
       case Item.Metadata.Kind is
          when Model.Summary_Report => Summary_Report (Out_Text, Item);
          when Model.Projects_Report => Projects_Report (Out_Text, Item);

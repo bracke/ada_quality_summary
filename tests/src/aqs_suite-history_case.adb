@@ -115,9 +115,7 @@ begin
                           """decimal""", "an empty series keeps the indicator's measurement kind");
          end;
       when T047 =>
-         Ada_Quality.Storage.Testing_Use_Legacy_Evidence (True);
-         Ignored := Publish (Database, Build (Project, Shape ("DOC-01")));
-         Ada_Quality.Storage.Testing_Use_Legacy_Evidence (False);
+         Ignored := Publish_Legacy (Database, Build (Project, Shape ("DOC-01")));
          Ignored := Publish (Database, Build (Register (Database, Parent (Database), "beta"), Shape));
          declare
             Text     : constant String := Json (Database, "history|alpha");
@@ -138,6 +136,6 @@ begin
             Expect_Equal (Value (Json (Database, "project|alpha"), "data.findings[0].line"), "null",
                           "legacy finding locations are absent, not inferred");
          end;
-      when others => null;
+      when others => raise Program_Error with "unhandled " & Id'Image;
    end case;
 end History_Case;

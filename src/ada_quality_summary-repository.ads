@@ -1,15 +1,19 @@
 with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Vectors;
+with Ada.Finalization;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
+with Ada_Quality.Types;
 with Ada_Quality_Summary.Limits;
+with Ada_Quality_Summary.Model;
 
 --  Coherent, read-only, in-memory database snapshot for one report invocation.
 --
 --  Load reads every required row in one read transaction through Ada_Quality.Reporting and releases the
 --  database before returning. A Snapshot never holds a database handle, cursor, or lock; every query below is a
---  pure function of the loaded data.
+--  pure function of the loaded data. Facts memoizes the per-run summaries derived from that data, so each completed
+--  assessment is decoded at most once per snapshot however many reports, days, or series consult it.
 package Ada_Quality_Summary.Repository is
    --  Coherent, read-only, in-memory database snapshot for one report invocation.
    subtype UString is Ada.Strings.Unbounded.Unbounded_String;
@@ -66,12 +70,6 @@ package Ada_Quality_Summary.Repository is
    --  @param Include_Removed Whether tombstones are included.
    --  @return Projects.
 
-   function Has_Project (Data : Snapshot; Project_Id : Positive) return Boolean;
-   --  Test whether a registry entry exists, including tombstones.
-   --  @param Data Snapshot.
-   --  @param Project_Id Project identity.
-   --  @return True when registered.
-
    function Project (Data : Snapshot; Project_Id : Positive) return Ada_Quality.Reporting.Project_Record;
    --  Return one registry entry.
    --  @param Data Snapshot.
@@ -109,6 +107,53 @@ package Ada_Quality_Summary.Repository is
    --  @return Decoded assessment.
    --  @exception Data_Error Stored evidence is corrupt.
 
+   function Result_Of
+     (Data : Snapshot; Run_Id : Positive; Indicator : Ada_Quality.Types.Indicator_Id)
+      return Ada_Quality.Types.Indicator_Result;
+   --  Return one result of a completed assessment without copying the whole assessment.
+   --  @param Data Snapshot.
+   --  @param Run_Id Completed run identity.
+   --  @param Indicator Indicator.
+   --  @return Persisted result.
+   --  @exception Data_Error Stored evidence is corrupt.
+
+   type Indicator_States is array (Ada_Quality.Types.Indicator_Id) of Ada_Quality_Summary.Model.Indicator_State;
+   --  One state per indicator.
+
+   type Value_Kinds is array (Ada_Quality.Types.Indicator_Id) of Ada_Quality.Types.Value_Kind;
+   --  One measurement representation per indicator.
+
+   type Indicator_Counts is array (Ada_Quality.Types.Indicator_Id) of Natural;
+   --  One count per indicator.
+
+   type Severity_Counts is array (Ada_Quality.Types.Severity) of Natural;
+   --  One count per finding severity.
+
+   type Run_Facts is record
+      Totals                : Ada_Quality_Summary.Model.Indicator_Totals;
+      Quality               : Ada_Quality_Summary.Model.Project_Quality_State := Ada_Quality_Summary.Model.Unassessed;
+      States                : Indicator_States := [others => Ada_Quality_Summary.Model.Missing_State];
+      Kinds                 : Value_Kinds := [others => Ada_Quality.Types.Unavailable_Value];
+      Findings              : Natural := 0;
+      Findings_By_Indicator : Indicator_Counts := [others => 0];
+      By_Severity           : Severity_Counts := [others => 0];
+   end record;
+   --  Summary of one completed assessment, derived once from its decoded results.
+   --  @field Totals Result-state counts.
+   --  @field Quality Classification of the assessment.
+   --  @field States Per-indicator result state.
+   --  @field Kinds Per-indicator measurement representation.
+   --  @field Findings Finding count.
+   --  @field Findings_By_Indicator Finding count per indicator.
+   --  @field By_Severity Finding count per severity.
+
+   function Facts (Data : Snapshot; Run_Id : Positive) return Run_Facts;
+   --  Return the summary of a completed assessment, decoding it on first use only.
+   --  @param Data Snapshot.
+   --  @param Run_Id Completed run identity.
+   --  @return Facts.
+   --  @exception Data_Error Stored evidence is corrupt.
+
    function History_Items (Data : Snapshot; Project_Id : Positive) return Ada_Quality.Storage.History_Vectors.Vector;
    --  Return run metadata in the shape Ada_Quality.History consumes.
    --  @param Data Snapshot.
@@ -121,6 +166,17 @@ package Ada_Quality_Summary.Repository is
    --  @param Data Snapshot.
    --  @param Run_Id Completed run identity.
    --  @return Evidence rows.
+   --  @exception Data_Error Stored evidence is corrupt.
+
+   function Compare
+     (Data : Snapshot; Project_Id, Current_Id : Positive) return Ada_Quality.Reporting.Project_Comparison;
+   --  Select a baseline for a project's assessment Current_Id and classify its changes, through
+   --  Ada_Quality.Reporting.Compare_Project; runs after Current_Id are ignored.
+   --  @param Data Snapshot.
+   --  @param Project_Id Project.
+   --  @param Current_Id Completed assessment in the current role.
+   --  @return Selection and regressions.
+   --  @exception Data_Error Stored evidence is corrupt.
 
    function Measurements (Data : Snapshot; Project_Id : Positive) return Ada_Quality.Storage.Detail_Vectors.Vector;
    --  Return measurement rows of a project's completed runs for Ada_Quality.History.Metric_Trend.
@@ -149,9 +205,25 @@ private
    package Run_Maps is new Ada.Containers.Ordered_Maps
      (Key_Type => Positive, Element_Type => Ada_Quality.Reporting.Run_Record, "=" => Ada_Quality.Reporting."=");
 
-   package Run_List_Maps is new Ada.Containers.Ordered_Maps
-     (Key_Type => Positive, Element_Type => Ada_Quality.Reporting.Run_Vectors.Vector,
-      "=" => Ada_Quality.Reporting.Run_Vectors."=");
+   package Id_List_Maps is new Ada.Containers.Ordered_Maps
+     (Key_Type => Positive, Element_Type => Id_Vectors.Vector, "=" => Id_Vectors."=");
+
+   package Fact_Maps is new Ada.Containers.Ordered_Maps (Key_Type => Positive, Element_Type => Run_Facts);
+
+   type Fact_Store is record
+      Map : Fact_Maps.Map;
+   end record;
+
+   type Fact_Store_Access is access Fact_Store;
+
+   --  Memo of derived facts; a snapshot is read through `in` parameters, so the memo lives behind an access value.
+   type Fact_Cache is new Ada.Finalization.Limited_Controlled with record
+      Store : Fact_Store_Access := new Fact_Store;
+   end record;
+
+   overriding procedure Finalize (Item : in out Fact_Cache);
+   --  Release the memo with its snapshot.
+   --  @param Item Memo.
 
    package History_Maps is new Ada.Containers.Ordered_Maps
      (Key_Type => Positive, Element_Type => Ada_Quality.Storage.History_Vectors.Vector,
@@ -165,11 +237,12 @@ private
       Session      : Ada_Quality.Reporting.Session;
       Project_Map  : Project_Maps.Map;
       Run_Map      : Run_Maps.Map;
-      Project_Runs : Run_List_Maps.Map;
+      Project_Runs : Id_List_Maps.Map;
       Histories    : History_Maps.Map;
       Measures     : Detail_List_Maps.Map;
       Current      : Id_Maps.Map;
       Latest       : Id_Maps.Map;
       Decoded      : Assessment_Maps.Map;
+      Fact_Memo    : Fact_Cache;
    end record;
 end Ada_Quality_Summary.Repository;

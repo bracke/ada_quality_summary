@@ -1,15 +1,11 @@
-with Ada.Calendar;
 with Ada.Characters.Handling;
 with Ada.Strings.Unbounded;
-with Ada_Quality.History;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Types;
-with Ada_Quality_Summary.Aggregation;
+with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Model;
-with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Text;
-with Ada_Quality_Summary.Trends;
 with Jsonlib.Documents;
 with Jsonlib.Serializers;
 
@@ -20,6 +16,9 @@ package body Ada_Quality_Summary.JSON is
    use Ada_Quality_Summary.Reports;
    use Jsonlib.Documents;
    use type Ada_Quality.Reporting.Evidence_Format;
+
+   --  The application whose database every report reads.
+   Source_Application : constant String := "ada_quality";
 
    function Lower (Text : String) return String renames Ada.Characters.Handling.To_Lower;
 
@@ -53,34 +52,43 @@ package body Ada_Quality_Summary.JSON is
       function Time_Or_Null (Value : Ada_Quality.Reporting.Optional_Timestamp) return Node is
         (if Value.Present then Str (Ada_Quality.Reporting.Image (Value)) else Null_Value);
 
-      function Date_Or_Null (Value : Ada_Quality_Summary.Options.Date_Bound; Upper : Boolean) return Node is
-      begin
-         if not Value.Present then
-            return Null_Value;
-         end if;
-         declare
-            Stamp : constant String :=
-              Ada_Quality.Reporting.Image
-                ((Present => True, Value => (if Upper then Ada.Calendar."-" (Value.Value, 86_400.0) else Value.Value)));
-         begin
-            return Str (Stamp (Stamp'First .. Stamp'First + 9));
-         end;
-      end Date_Or_Null;
+      function Date_Or_Null (Value : Criteria.Date_Bound) return Node is
+        (if Value.Present then Str (Criteria.Day_Image (Value.Value)) else Null_Value);
 
       procedure Put (Object : Node; Name : String; Value : Node) is
       begin
          Doc.Insert (Object, Name, Value);
       end Put;
 
-      function Indicator_Totals_Object (Totals : Indicator_Totals) return Node is
-         Object : constant Node := Doc.New_Object;
+      --  Indicator state counts into Object; Missing is reported only by cross-project aggregates.
+      procedure Put_Totals (Object : Node; Totals : Indicator_Totals; With_Missing : Boolean) is
       begin
          Put (Object, "passed", Nat (Totals.Passed));
          Put (Object, "violated", Nat (Totals.Violated));
          Put (Object, "unknown", Nat (Totals.Unknown_Count));
          Put (Object, "not_applicable", Nat (Totals.Not_Applicable));
+         if With_Missing then
+            Put (Object, "missing", Nat (Totals.Missing));
+         end if;
+      end Put_Totals;
+
+      function Indicator_Totals_Object (Totals : Indicator_Totals) return Node is
+         Object : constant Node := Doc.New_Object;
+      begin
+         Put_Totals (Object, Totals, With_Missing => False);
          return Object;
       end Indicator_Totals_Object;
+
+      --  Provenance of one assessment, shared by the project assessment and history runs.
+      procedure Put_Provenance (Object : Node; Source, Policy, Toolchain : Ada.Strings.Unbounded.Unbounded_String;
+                                Started_At, Finished_At : Ada_Quality.Reporting.Optional_Timestamp) is
+      begin
+         Put (Object, "source_fingerprint", Str (Source));
+         Put (Object, "policy_fingerprint", Str (Policy));
+         Put (Object, "toolchain_fingerprint", Str (Toolchain));
+         Put (Object, "started_at", Time_Or_Null (Started_At));
+         Put (Object, "finished_at", Time_Or_Null (Finished_At));
+      end Put_Provenance;
 
       function Project_Object (Project : Project_Summary) return Node is
          Object : constant Node := Doc.New_Object;
@@ -137,12 +145,8 @@ package body Ada_Quality_Summary.JSON is
          Put (Object, "name", Str (Indicator.Name));
          Put (Object, "category", Str (Category_Image (Indicator.Category)));
          Put (Object, "version", Nat (Indicator.Version));
-         Put (Object, "passed", Nat (Indicator.Totals.Passed));
-         Put (Object, "violated", Nat (Indicator.Totals.Violated));
-         Put (Object, "unknown", Nat (Indicator.Totals.Unknown_Count));
-         Put (Object, "not_applicable", Nat (Indicator.Totals.Not_Applicable));
-         Put (Object, "missing", Nat (Indicator.Totals.Missing));
-         Put (Object, "affected_projects", Nat (Indicator.Affected));
+         Put_Totals (Object, Indicator.Totals, With_Missing => True);
+         Put (Object, "affected_projects", Nat (Indicator.Totals.Violated));
          return Object;
       end Indicator_Summary_Object;
 
@@ -214,12 +218,7 @@ package body Ada_Quality_Summary.JSON is
          Put (Object, "evidence", Str (Result.Evidence));
          Put (Object, "measurement", Measurement_Object (Result.Indicator, Result.Measurement));
          for F of Result.Findings loop
-            Doc.Append
-              (Findings,
-               Finding_Object
-                 ((Project_Id => Project_Id, Run_Id => Run_Id, Indicator => F.Indicator, Rule => F.Rule,
-                   Level => F.Level, Message => F.Message, Path => F.Relative_Path, Line => F.Line,
-                   Fingerprint => F.Fingerprint)));
+            Doc.Append (Findings, Finding_Object (Summary_Of (Project_Id, Run_Id, F)));
          end loop;
          Put (Object, "findings", Findings);
          return Object;
@@ -229,26 +228,10 @@ package body Ada_Quality_Summary.JSON is
          Object : constant Node := Doc.New_Object;
       begin
          for Kind in Counts'Range loop
-            declare
-               Name : String := Ada_Quality.History.Image (Kind);
-            begin
-               for C of Name loop
-                  if C = '-' then C := '_'; end if;
-               end loop;
-               Put (Object, Name, Nat (Counts (Kind)));
-            end;
+            Put (Object, Image (Kind), Nat (Counts (Kind)));
          end loop;
          return Object;
       end Kind_Counts_Object;
-
-      function Regression_Kind_Image (Kind : Ada_Quality.History.Regression_Kind) return String is
-         Name : String := Ada_Quality.History.Image (Kind);
-      begin
-         for C of Name loop
-            if C = '-' then C := '_'; end if;
-         end loop;
-         return Name;
-      end Regression_Kind_Image;
 
       function Regression_Object (Change : Regression_Summary) return Node is
          Object : constant Node := Doc.New_Object;
@@ -257,7 +240,7 @@ package body Ada_Quality_Summary.JSON is
          Put (Object, "current_run_id", Nat (Change.Current_Run_Id));
          Put (Object, "baseline_run_id", Nat (Change.Baseline_Run_Id));
          Put (Object, "indicator_id", Str (Image (Change.Indicator)));
-         Put (Object, "kind", Str (Regression_Kind_Image (Change.Kind)));
+         Put (Object, "kind", Str (Image (Change.Kind)));
          Put (Object, "before", Str (Change.Before));
          Put (Object, "after", Str (Change.After));
          return Object;
@@ -272,22 +255,22 @@ package body Ada_Quality_Summary.JSON is
          return List;
       end Regressions_Array;
 
-      function Baseline_Object (Info : Trends.Baseline_Info) return Node is
+      function Baseline_Object (Info : Baseline_Info) return Node is
          Object   : constant Node := Doc.New_Object;
          Excluded : constant Node := Doc.New_Array;
       begin
          Put (Object, "project_id", Nat (Info.Project_Id));
-         Put (Object, "status", Str (Trends.Image (Info.Status)));
+         Put (Object, "status", Str (Image (Info.Status)));
          Put (Object, "current_run_id", Id_Or_Null (Info.Current_Run_Id));
          Put (Object, "baseline_run_id", Id_Or_Null (Info.Baseline_Run_Id));
-         Put (Object, "comparison", Str (Trends.Image (Info.Comparison)));
+         Put (Object, "comparison", Str (Image (Info.Comparison)));
          Put (Object, "policy_changed", Bool (Info.Policy_Changed));
          for Run of Info.Excluded loop
             declare
                Entry_Object : constant Node := Doc.New_Object;
             begin
                Put (Entry_Object, "run_id", Nat (Run.Run_Id));
-               Put (Entry_Object, "reason", Str (Trends.Image (Run.Reason)));
+               Put (Entry_Object, "reason", Str (Image (Run.Reason)));
                Doc.Append (Excluded, Entry_Object);
             end;
          end loop;
@@ -300,11 +283,7 @@ package body Ada_Quality_Summary.JSON is
       begin
          Put (Object, "run_id", Nat (Run.Run_Id));
          Put (Object, "state", Str (Run_State_Image (Run.State)));
-         Put (Object, "source_fingerprint", Str (Run.Source_Id));
-         Put (Object, "policy_fingerprint", Str (Run.Policy_Id));
-         Put (Object, "toolchain_fingerprint", Str (Run.Toolchain_Id));
-         Put (Object, "started_at", Time_Or_Null (Run.Started_At));
-         Put (Object, "finished_at", Time_Or_Null (Run.Finished_At));
+         Put_Provenance (Object, Run.Source_Id, Run.Policy_Id, Run.Toolchain_Id, Run.Started_At, Run.Finished_At);
          Put (Object, "quality", (if Run.Has_Quality then Str (Image (Run.Quality)) else Null_Value));
          return Object;
       end Run_Object;
@@ -376,11 +355,8 @@ package body Ada_Quality_Summary.JSON is
                Assessment : constant Node := Doc.New_Object;
             begin
                Put (Assessment, "run_id", Nat (Run.Id));
-               Put (Assessment, "source_fingerprint", Str (Run.Source_Id));
-               Put (Assessment, "policy_fingerprint", Str (Run.Policy_Id));
-               Put (Assessment, "toolchain_fingerprint", Str (Run.Toolchain_Id));
-               Put (Assessment, "started_at", Time_Or_Null (Run.Started_At));
-               Put (Assessment, "finished_at", Time_Or_Null (Run.Finished_At));
+               Put_Provenance
+                 (Assessment, Run.Source_Id, Run.Policy_Id, Run.Toolchain_Id, Run.Started_At, Run.Finished_At);
                Put (Assessment, "evidence_format",
                     Str (if Run.Format = Ada_Quality.Reporting.Lossless_Evidence then "lossless" else "legacy"));
                Put (Assessment, "totals", Indicator_Totals_Object (Item.Project.Totals));
@@ -424,7 +400,7 @@ package body Ada_Quality_Summary.JSON is
                Put (Object, "project_id", Nat (Row.Project.Project_Id));
                Put (Object, "name", Str (Row.Project.Name));
                Put (Object, "path", Str (Row.Project.Project_Path));
-               Put (Object, "state", Str (Aggregation.Image (Row.State)));
+               Put (Object, "state", Str (Image (Row.State)));
                Put (Object, "run_id", Id_Or_Null (Row.Project.Current_Run_Id));
                Put (Object, "result",
                     (if Row.Has_Result
@@ -435,11 +411,7 @@ package body Ada_Quality_Summary.JSON is
          end loop;
          Put (Data, "projects", List);
          Put (Totals, "projects", Nat (Item.Portfolio.Totals.Projects));
-         Put (Totals, "passed", Nat (Item.Indicator.Totals.Passed));
-         Put (Totals, "violated", Nat (Item.Indicator.Totals.Violated));
-         Put (Totals, "unknown", Nat (Item.Indicator.Totals.Unknown_Count));
-         Put (Totals, "not_applicable", Nat (Item.Indicator.Totals.Not_Applicable));
-         Put (Totals, "missing", Nat (Item.Indicator.Totals.Missing));
+         Put_Totals (Totals, Item.Indicator.Totals, With_Missing => True);
          Put (Data, "totals", Totals);
          return Data;
       end Indicator_Data;
@@ -483,7 +455,6 @@ package body Ada_Quality_Summary.JSON is
          Series    : constant Node := Doc.New_Array;
          Snapshots : constant Node := Doc.New_Array;
          Meta      : constant Node := Doc.New_Object;
-         Excluded  : Natural := 0;
       begin
          for Trend of Item.Series loop
             declare
@@ -510,15 +481,14 @@ package body Ada_Quality_Summary.JSON is
                Put (Object, "projects_excluded", Nat (Trend.Projects_Excluded));
                Put (Object, "excluded_observations", Nat (Trend.Excluded_Observations));
                Doc.Append (Series, Object);
-               Excluded := Excluded + Trend.Excluded_Observations;
             end;
          end loop;
          Put (Data, "series", Series);
-         Put (Data, "excluded_observations", Nat (Excluded));
+         Put (Data, "excluded_observations", Nat (Item.Excluded_Observations));
          Put (Meta, "method", Str ("ada_quality.history.metric_trend"));
          Put (Meta, "reference", Str ("current_completed_assessment"));
-         Put (Meta, "since", Date_Or_Null (Item.Since, Upper => False));
-         Put (Meta, "until", Date_Or_Null (Item.Until_Date, Upper => True));
+         Put (Meta, "since", Date_Or_Null (Item.Since));
+         Put (Meta, "until", Date_Or_Null (Item.Until_Date));
          Put (Meta, "undated_excluded", Nat (Item.Undated));
          Put (Data, "comparison_metadata", Meta);
          for Day of Item.Daily loop
@@ -563,7 +533,7 @@ package body Ada_Quality_Summary.JSON is
    begin
       Put (Root, "schema_version", Nat (Item.Metadata.Format_Version));
       Put (Root, "report_type", Str (Image (Item.Metadata.Kind)));
-      Put (Source, "application", Str ("ada_quality"));
+      Put (Source, "application", Str (Source_Application));
       Put (Source, "database_schema_version", Nat (Item.Metadata.Source_Schema_Version));
       Put (Source, "snapshot", Str (Item.Metadata.Snapshot_Identity));
       Put (Root, "source", Source);

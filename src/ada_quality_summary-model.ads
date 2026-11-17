@@ -105,15 +105,13 @@ package Ada_Quality_Summary.Model is
       Version  : Positive;
       Name     : UString;
       Totals   : Indicator_Totals;
-      Affected : Natural := 0;
    end record;
    --  Cross-project aggregate for one indicator.
    --  @field Id Indicator identity.
    --  @field Category Registry category.
    --  @field Version Indicator contract version.
    --  @field Name Registry name.
-   --  @field Totals One state per selected project.
-   --  @field Affected Projects violating the indicator.
+   --  @field Totals One state per selected project; Totals.Violated is the number of affected projects.
 
    package Indicator_Summary_Vectors is new Ada.Containers.Vectors
      (Index_Type => Positive, Element_Type => Indicator_Summary);
@@ -265,6 +263,128 @@ package Ada_Quality_Summary.Model is
    --  @field Selected_Projects Projects in the selected population.
    --  @field Snapshot_Identity Digest of the database snapshot.
    --  @field Kind Report command.
+
+   type Indicator_State is new Ada_Quality_Summary.Rules.Result_State;
+   --  One project's state for one indicator. The literals and their meaning are those of
+   --  Ada_Quality_Summary.Rules.Result_State.
+
+   function Image (State : Indicator_State) return String;
+   --  Return the stable spelling.
+   --  @param State State.
+   --  @return `pass`, `violation`, `unknown`, `not_applicable`, or `missing`.
+
+   function State_Of (Compliance : Ada_Quality.Types.Compliance_Status) return Indicator_State;
+   --  Return the state of a persisted result: the one mapping from Ada Quality compliance to reporting state.
+   --  @param Compliance Persisted compliance.
+   --  @return Pass, violation, unknown, or not-applicable state; never Missing_State.
+
+   type Indicator_Row is record
+      Project    : Project_Summary;
+      State      : Indicator_State;
+      Has_Result : Boolean := False;
+      Result     : Ada_Quality.Types.Indicator_Result;
+   end record;
+   --  One project's result for the indicator report.
+   --  @field Project Project row.
+   --  @field State Result state.
+   --  @field Has_Result Whether a completed assessment supplied Result.
+   --  @field Result Decoded result.
+
+   package Indicator_Row_Vectors is new Ada.Containers.Vectors
+     (Index_Type => Positive, Element_Type => Indicator_Row);
+   --  Indicator report rows.
+
+   function Summary_Of
+     (Project_Id, Run_Id : Positive; Finding : Ada_Quality.Types.Finding) return Finding_Summary;
+   --  Return the report row of one persisted finding.
+   --  @param Project_Id Owning project.
+   --  @param Run_Id Owning assessment.
+   --  @param Finding Persisted finding.
+   --  @return Finding row.
+
+   function Basename (Path : String) return String;
+   --  Return the final path component, ignoring one trailing separator.
+   --  @param Path Project path.
+   --  @return Directory basename.
+
+   function Image (Kind : Ada_Quality.History.Regression_Kind) return String;
+   --  Return the JSON spelling of a regression classification: Ada Quality's image with underscores.
+   --  @param Kind Classification.
+   --  @return Lowercase underscore spelling, such as `new_violation`.
+
+   type Baseline_Status is (No_Current_Assessment, No_Baseline, Compared);
+   --  Outcome of baseline selection for one project.
+   --  @enum No_Current_Assessment The project has no completed assessment.
+   --  @enum No_Baseline No comparable earlier assessment exists; the comparison status gives the reason.
+   --  @enum Compared The current assessment was compared with its selected baseline.
+
+   function Image (Status : Baseline_Status) return String;
+   --  Return the stable spelling.
+   --  @param Status Baseline status.
+   --  @return `no_current_assessment`, `no_baseline`, or `compared`.
+
+   type Exclusion_Reason is (Missing_Source_Fingerprint, Policy_Changed, Toolchain_Changed);
+   --  Why Ada_Quality.History.Compatible rejected an earlier completed assessment.
+   --  @enum Missing_Source_Fingerprint A source fingerprint is absent.
+   --  @enum Policy_Changed The policy fingerprint differs or is absent.
+   --  @enum Toolchain_Changed The toolchain fingerprint differs or is absent.
+
+   function Image (Status : Ada_Quality.History.Comparison_Status) return String;
+   --  Return the JSON spelling of a baseline-selection decision: Ada Quality's image with underscores.
+   --  @param Status Selection decision.
+   --  @return Lowercase underscore spelling, such as `comparison_available` or `toolchain_changed`.
+
+   function Image (Reason : Exclusion_Reason) return String;
+   --  Return the stable spelling.
+   --  @param Reason Reason.
+   --  @return Lowercase underscore spelling.
+
+   type Excluded_Run is record
+      Run_Id : Positive;
+      Reason : Exclusion_Reason;
+   end record;
+   --  Earlier completed assessment skipped as an incompatible baseline.
+   --  @field Run_Id Skipped assessment.
+   --  @field Reason Incompatibility.
+
+   package Excluded_Run_Vectors is new Ada.Containers.Vectors
+     (Index_Type => Positive, Element_Type => Excluded_Run);
+   --  Skipped assessments, newest first.
+
+   type Baseline_Info is record
+      Project_Id      : Positive;
+      Status          : Baseline_Status := No_Current_Assessment;
+      Current_Run_Id  : Natural := 0;
+      Baseline_Run_Id : Natural := 0;
+      Comparison      : Ada_Quality.History.Comparison_Status := Ada_Quality.History.No_Assessments;
+      Policy_Changed  : Boolean := False;
+      Excluded        : Excluded_Run_Vectors.Vector;
+   end record;
+   --  Baseline selection for one project.
+   --  @field Project_Id Project.
+   --  @field Status Outcome.
+   --  @field Current_Run_Id Current completed assessment, or zero.
+   --  @field Baseline_Run_Id Selected baseline, or zero.
+   --  @field Comparison Ada_Quality.History.Select_Comparison decision for the current assessment.
+   --  @field Policy_Changed Whether the baseline was assessed under a different policy, so changes the policy caused
+   --  are classified as policy-induced.
+   --  @field Excluded Incompatible completed assessments newer than the baseline.
+
+   package Baseline_Info_Vectors is new Ada.Containers.Vectors
+     (Index_Type => Positive, Element_Type => Baseline_Info);
+   --  Baseline selections.
+
+   type State_Snapshot is record
+      Day        : UString;
+      Totals     : Portfolio_Totals;
+   end record;
+   --  Last-known-state classification of the population at the end of one UTC day.
+   --  @field Day UTC date `YYYY-MM-DD`.
+   --  @field Totals Classification counts and indicator totals.
+
+   package State_Snapshot_Vectors is new Ada.Containers.Vectors
+     (Index_Type => Positive, Element_Type => State_Snapshot);
+   --  Daily snapshots in ascending date order.
 
    function Classify (Results : Ada_Quality.Types.Result_Vectors.Vector) return Project_Quality_State;
    --  Classify a completed assessment; unknown takes precedence over violation.
