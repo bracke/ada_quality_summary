@@ -6,7 +6,7 @@ with Jsonlib.Documents;
 package Ada_Quality_Summary.JSON is
    --  Versioned JSON serialization of report data.
 
-   Default_Maximum_Bytes : constant := Ada_Quality_Summary.Limits.Maximum_JSON_Bytes;
+   Default_Maximum_Bytes : constant := Ada_Quality_Summary.Limits.Maximum_Output_Bytes;
    --  Largest JSON document emitted.
 
    function Render

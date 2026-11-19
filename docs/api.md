@@ -26,13 +26,13 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 
 | Unit | Main declarations |
 | ---- | ----------------- |
-| `Ada_Quality_Summary` | `Version`, `Report_Format_Version`, `Argument_Error`, `Report_Error`, `Data_Error`. |
-| `.Limits` | `Maximum_Projects`, `Maximum_Runs`, `Maximum_Findings`, `Maximum_Width`, `Maximum_Field_Width`, `Maximum_JSON_Bytes`, `Default_Load`. |
+| `Ada_Quality_Summary` | `Version`, `Report_Format_Version`, `Database_Variable`, `Default_Database`, `Color_Variable`, `Width_Variable`, `Argument_Error`, `Report_Error`, `Data_Error`. |
+| `.Limits` | `Maximum_Projects`, `Maximum_Runs`, `Maximum_Findings`, `Maximum_Width`, `Maximum_Field_Width`, `Maximum_Output_Bytes`, `Default_Load`. |
 | `.Criteria` | `Sort_Key`, `Image`, `Date_Bound`, `Day_Start`, `Day_Image`, `Within`, `Gate_Condition`, `Gate_Set`, `Gate_Counts`. |
 | `.Options` | `Options`, `Command_Kind`, `Named_Command`, `Option_Kind`, `Output_Format`, `Shell_Kind`, `Spelling`, `Value_Name`, `Usage`, `Help_Key`, `Accepts`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`, `Name`, `Report_Of`. |
 | `.Rules` | `Quality_State`, `Newer_State`, `Result_State`, `Indicator_Totals`, `Portfolio_Totals`. |
 | `.Rules.Counting` | `Total`, `Applicable`, `Sum`, `Tally`, `Classify`, `Priority`, `Classified`, `Consistent`, `Add_Classified`, `Add_Project` (SPARK, proved). |
-| `.Model` | `Project_Quality_State`, `Indicator_State`, `State_Of`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Indicator_Row`, `Finding_Summary`, `Summary_Of`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Baseline_Info`, `Pair_Comparison`, `State_Snapshot`, `Waiver_Rule`, `Is_Waiver`, `Waiver_Target`, `Waiver_Justification`, `Report_Kind`, `Report_Metadata`, `Basename`, `Classify`, `Count_Indicators`, `Quality_Priority`, images. |
+| `.Model` | `Project_Quality_State`, `Indicator_State`, `State_Of`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Indicator_Row`, `Finding_Summary`, `Summary_Of`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Baseline_Info`, `Pair_Comparison`, `State_Snapshot`, `Waiver_Rule`, `Is_Waiver`, `Waiver_Target`, `Waiver_Justification`, `Report_Kind`, `Report_Metadata`, `Basename`, stable images of severities, categories, and lifecycle states, `Classify`, `Count_Indicators`, `Quality_Priority`, images. |
 | `.Repository` | `Repository`, `Snapshot`, `Open`, `Load`, indexed queries, `Assessment`, `Result_Of`, `Run_Facts`, `Facts`, `Resolve_Run`, `Compare`, `Compare_Runs`. |
 | `.Filtering` | `Selection`, `Parse_Project_Id`, `Resolve_Project`, `Resolve_Indicator`, `Population`, sorting procedures, `Limit`. |
 | `.Aggregation` | `Build_Project`, `Build_Projects`, `Build_Totals`, `Build_Portfolio`, `Build_Indicator`, `Build_Indicators`, `Build_Findings`, `Findings_Of`, `State_Of`. |
@@ -42,10 +42,10 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | `.Terminal.Environment` | `Stdout_Is_Terminal`, `Clamp`, `Detect_Width`, `Use_Color`, `Unicode_Locale`. |
 | `.Terminal.Cells` | `Display_Width`, `Fit`, `Pad`, `Basis_Points_Image`. |
 | `.JSON` | `Render`, `Serialize`. |
-| `.SARIF` | `Render`, `File_URI`, `Encode`. |
+| `.SARIF` | `Render (Item, Source_Root, ...)`, `Source_Root_Id`, `Relative`, `Is_Inside`, `File_URI`, `Encode`. |
 | `.Completion` | `Script`, `Choices`. |
 | `.CLI` | `Execute`, `Run`, `Outcome`, exit-code constants. |
-| `.Text` | `Message`, `Arg`, `Catalog_Is_Valid`, `Has_Message`. |
+| `.Text` | `Message`, `Arg`, `Decimal`, `Bounded`, `Catalog_Is_Valid`, `Has_Message`. |
 
 Aggregation, filtering, trends, and report assembly are deterministic. Their only side effect is the memo of run
 facts inside the snapshot, which changes no result. `Terminal.Environment.Use_Color` sets the process-wide

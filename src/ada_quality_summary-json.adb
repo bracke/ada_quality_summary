@@ -1,4 +1,3 @@
-with Ada.Characters.Handling;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
@@ -19,19 +18,6 @@ package body Ada_Quality_Summary.JSON is
    --  The application whose database every report reads.
    Source_Application : constant String := "ada_quality";
 
-   function Lower (Text : String) return String renames Ada.Characters.Handling.To_Lower;
-
-   function Category_Image (Category : Ada_Quality.Indicators.Indicator_Category) return String is
-     (Lower (Ada_Quality.Indicators.Indicator_Category'Image (Category)));
-
-   function Severity_Image (Level : Severity) return String is (Lower (Severity'Image (Level)));
-
-   function Run_State_Image (State : Assessment_Status) return String is
-     (case State is
-         when Assessment_Running => "running",
-         when Assessment_Completed => "completed",
-         when Assessment_Invalid => "invalid",
-         when Assessment_Interrupted => "interrupted");
 
    function Render
      (Item : Report; Pretty : Boolean := False; Maximum_Bytes : Positive := Default_Maximum_Bytes) return String
@@ -142,7 +128,7 @@ package body Ada_Quality_Summary.JSON is
       begin
          Put (Object, "id", Str (Image (Indicator.Id)));
          Put (Object, "name", Str (Indicator.Name));
-         Put (Object, "category", Str (Category_Image (Indicator.Category)));
+         Put (Object, "category", Str (Image (Indicator.Category)));
          Put (Object, "version", Nat (Indicator.Version));
          Put_Totals (Object, Indicator.Totals, With_Missing => True);
          Put (Object, "affected_projects", Nat (Indicator.Totals.Violated));
@@ -183,7 +169,7 @@ package body Ada_Quality_Summary.JSON is
          Put (Object, "run_id", Nat (Finding.Run_Id));
          Put (Object, "indicator_id", Str (Image (Finding.Indicator)));
          Put (Object, "rule", Str (Finding.Rule));
-         Put (Object, "severity", Str (Severity_Image (Finding.Level)));
+         Put (Object, "severity", Str (Image (Finding.Level)));
          Put (Object, "message", Str (Finding.Message));
          Put (Object, "relative_path", (if Length (Finding.Path) = 0 then Null_Value else Str (Finding.Path)));
          Put (Object, "line", (if Finding.Line = 0 then Null_Value else Nat (Finding.Line)));
@@ -208,7 +194,7 @@ package body Ada_Quality_Summary.JSON is
       begin
          Put (Object, "id", Str (Image (Result.Indicator)));
          Put (Object, "name", Str (Descriptor.Name.all));
-         Put (Object, "category", Str (Category_Image (Descriptor.Category)));
+         Put (Object, "category", Str (Image (Descriptor.Category)));
          Put (Object, "version", Nat (Descriptor.Version));
          Put (Object, "execution", Str (Image (Result.Execution)));
          Put (Object, "compliance", Str (Image (Result.Compliance)));
@@ -281,7 +267,7 @@ package body Ada_Quality_Summary.JSON is
          Object : constant Node := Doc.New_Object;
       begin
          Put (Object, "run_id", Nat (Run.Run_Id));
-         Put (Object, "state", Str (Run_State_Image (Run.State)));
+         Put (Object, "state", Str (Image (Run.State)));
          Put_Provenance (Object, Run.Source_Id, Run.Policy_Id, Run.Toolchain_Id, Run.Started_At, Run.Finished_At);
          Put (Object, "quality", (if Run.Has_Quality then Str (Image (Run.Quality)) else Null_Value));
          return Object;
@@ -425,7 +411,7 @@ package body Ada_Quality_Summary.JSON is
          Put (Totals, "findings", Nat (Item.Finding_Total));
          Put (Totals, "projects", Nat (Item.Finding_Projects));
          for Level in reverse Severity loop
-            Put (Severity_Object, Severity_Image (Level), Nat (Item.By_Severity (Level)));
+            Put (Severity_Object, Image (Level), Nat (Item.By_Severity (Level)));
          end loop;
          Put (Totals, "by_severity", Severity_Object);
          Put (Data, "totals", Totals);
@@ -618,14 +604,8 @@ package body Ada_Quality_Summary.JSON is
       Settings : constant Jsonlib.Serializers.Options :=
         (Form => (if Pretty then Jsonlib.Serializers.Pretty else Jsonlib.Serializers.Compact), Indent => 2,
          Escape_Non_Ascii => False, Sort_Members => False);
-      Text     : constant String := Jsonlib.Serializers.To_String (Doc, Settings) & Character'Val (10);
    begin
-      if Text'Length > Maximum_Bytes then
-         raise Report_Error with
-           Ada_Quality_Summary.Text.Message
-             ("error.json_size", [Ada_Quality_Summary.Text.Arg ("size", Long_Long_Integer (Text'Length)),
-                                  Ada_Quality_Summary.Text.Arg ("limit", Long_Long_Integer (Maximum_Bytes))]);
-      end if;
-      return Text;
+      return Ada_Quality_Summary.Text.Bounded
+        (Jsonlib.Serializers.To_String (Doc, Settings) & Character'Val (10), Maximum_Bytes);
    end Serialize;
 end Ada_Quality_Summary.JSON;

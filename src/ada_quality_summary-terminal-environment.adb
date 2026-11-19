@@ -33,9 +33,9 @@ package body Ada_Quality_Summary.Terminal.Environment is
             end if;
          end;
       end if;
-      if Ada.Environment_Variables.Exists ("COLUMNS") then
+      if Ada.Environment_Variables.Exists (Width_Variable) then
          declare
-            Text : constant String := Ada.Environment_Variables.Value ("COLUMNS");
+            Text : constant String := Ada.Environment_Variables.Value (Width_Variable);
          begin
             if Text'Length in 1 .. 4 and then (for all C of Text => C in '0' .. '9') then
                return Clamp (Natural'Value (Text));

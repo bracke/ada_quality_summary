@@ -1,5 +1,4 @@
 with Ada.Containers;
-with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada_Quality.History;
 with Ada_Quality.Indicators;
@@ -56,7 +55,7 @@ package body Ada_Quality_Summary.Filtering is
                Append (Matches, ", ");
             end if;
             if Count < Listed then
-               Append (Matches, Ada.Strings.Fixed.Trim (Positive'Image (Project.Id), Ada.Strings.Both));
+               Append (Matches, Decimal (Long_Long_Integer (Project.Id)));
             end if;
             Found := Project.Id;
             Count := Count + 1;

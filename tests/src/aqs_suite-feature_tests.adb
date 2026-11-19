@@ -193,22 +193,36 @@ package body Feature_Tests is
       Expect (Code_Of (Database, "summary|--format|json|--layout|compact") = 2, "--layout is for text output");
    end Markdown_Output;
 
+   --  The SARIF log of a database's problems report, rendered against Root as the source root.
+   function Sarif_Of (Database, Root : String) return String is
+      Store : Ada_Quality_Summary.Repository.Repository;
+   begin
+      Ada_Quality_Summary.Repository.Open (Store, Database);
+      declare
+         Data : constant Ada_Quality_Summary.Repository.Snapshot := Ada_Quality_Summary.Repository.Load (Store);
+      begin
+         return Ada_Quality_Summary.SARIF.Render
+           (Ada_Quality_Summary.Reports.Build (Data, Ada_Quality_Summary.Options.Parse (Arguments_Of ("problems")),
+                                               Database), Root);
+      end;
+   end Sarif_Of;
+
    procedure SARIF_Output is
       Database : constant String := New_Database ("sarif");
-      Plain    : Positive;
-      Spaced   : Positive;
       Ignored  : Positive;
    begin
       Create (Database);
-      Plain := Register (Database, Parent (Database), "plain");
-      Spaced := Register (Database, Parent (Database), "with space");
-      Ignored := Publish (Database, Build (Plain, Shape ("DOC-01", Findings => 2, Level => High)));
-      Ignored := Publish (Database, Build (Spaced, Shape ("SEC-01", Waivers => "SRC-03", Level => Medium)));
+      Ignored := Publish
+        (Database, Build (Register (Database, Parent (Database), "plain"),
+                          Shape ("DOC-01", Findings => 2, Level => High)));
+      Ignored := Publish
+        (Database, Build (Register (Database, Parent (Database), "with space"),
+                          Shape ("SEC-01", Waivers => "SRC-03", Level => Medium)));
       declare
          Text     : constant String := Output (Report (Database, "problems|--format|sarif"));
          Problems : constant String := Json (Database, "problems");
          Results  : constant Natural := Count_Of (Text, "runs[0].results");
-         Base     : constant String := "runs[0].originalUriBaseIds.project-" & Image (Spaced) & ".uri";
+         Location : constant String := "runs[0].results[2].locations[0].physicalLocation.";
       begin
          Expect_Equal (Value (Text, "version"), Q ("2.1.0"), "SARIF 2.1.0");
          Expect_Equal (Value (Text, "runs[0].tool.driver.name"), Q ("ada-quality-summary"), "the tool");
@@ -232,13 +246,51 @@ package body Feature_Tests is
          Expect_Equal (Value (Text, "runs[0].results[3].suppressions[0].justification"),
                        Q ("one decoder owns the whole wire format"), "with its justification");
          Expect (Value_Or_Absent (Text, "runs[0].results[0].suppressions") = Absent, "other results are not");
-         Expect (Ada.Strings.Fixed.Tail (Value (Text, Base), 14) = "with%20space/""",
-                 "project roots are percent-encoded directory URIs: " & Value (Text, Base));
-         Expect_Equal (Value (Text, "runs[0].results[0].locations[0].physicalLocation.artifactLocation.uriBaseId"),
-                       Q ("project-" & Image (Plain)), "locations resolve against their project");
-         Expect_Equal (Value (Text, "runs[0].results[0].locations[0].physicalLocation.region.startLine"), "1",
-                       "with the finding line");
+         --  The fixture projects lie outside the working directory, so their locations are absolute.
+         Expect (Ada.Strings.Fixed.Tail (Value (Text, Location & "artifactLocation.uri"), 26) =
+                   "with%20space/src/file.adb""" and then
+                 Ada.Strings.Fixed.Head (Value (Text, Location & "artifactLocation.uri"), 8) = """file://",
+                 "a location outside the source root is a percent-encoded file URI: " &
+                   Value (Text, Location & "artifactLocation.uri"));
+         Expect (Value_Or_Absent (Text, Location & "artifactLocation.uriBaseId") = Absent, "without a base");
+         Expect_Equal (Value (Text, Location & "region.startLine"), "1", "with the finding line");
+         Expect_Equal (Value (Text, "runs[0].originalUriBaseIds.%SRCROOT%.uri"),
+                       Q (Ada_Quality_Summary.SARIF.File_URI (Ada.Directories.Current_Directory)),
+                       "the working directory is the source root");
       end;
+      --  Rendered against the directory that holds the projects, locations are relative to the source root.
+      declare
+         Text : constant String := Sarif_Of (Database, Parent (Database));
+      begin
+         Expect_Equal (Value (Text, "runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri"),
+                       Q ("plain/src/file.adb"), "a location inside the source root is relative");
+         Expect_Equal (Value (Text, "runs[0].results[0].locations[0].physicalLocation.artifactLocation.uriBaseId"),
+                       Q (Ada_Quality_Summary.SARIF.Source_Root_Id), "through the source-root base");
+         Expect_Equal (Value (Text, "runs[0].results[2].locations[0].physicalLocation.artifactLocation.uri"),
+                       Q ("with%20space/src/file.adb"), "and percent-encoded");
+      end;
+      --  A legacy finding has no path; it is located at its project's manifest, without a line.
+      declare
+         Legacy  : constant String := New_Database ("sarif-legacy");
+         Project : Positive;
+      begin
+         Create (Legacy);
+         Project := Register (Legacy, Parent (Legacy), "old");
+         Ignored := Publish_Legacy (Legacy, Build (Project, Shape ("DOC-01")));
+         declare
+            Text : constant String := Sarif_Of (Legacy, Parent (Legacy));
+         begin
+            Expect_Equal (Value (Text, "runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri"),
+                          Q ("old/alire.toml"), "a finding without a path points at the manifest");
+            Expect (Value_Or_Absent (Text, "runs[0].results[0].locations[0].physicalLocation.region") = Absent,
+                    "without a region");
+         end;
+      end;
+      Expect (Ada_Quality_Summary.SARIF.Relative ("/a/b", "/a/b/c/d") = "c/d" and then
+                Ada_Quality_Summary.SARIF.Relative ("/a/b/", "/a/b") = "" and then
+                Ada_Quality_Summary.SARIF.Relative ("/a/b", "/a/bc") = "/a/bc" and then
+                not Ada_Quality_Summary.SARIF.Is_Inside ("/a/b", "/a/bc") and then
+                Ada_Quality_Summary.SARIF.Is_Inside ("/", "/x"), "paths below the source root, and only those");
       Expect (Count_Of (Output (Report (Database, "problems|--format|sarif|--limit|1|--pretty")),
                         "runs[0].results") = 1, "--limit and --pretty apply");
       Expect (Contains (Errors (Report (Database, "summary|--format|sarif")), "problems command"),
@@ -402,6 +454,21 @@ package body Feature_Tests is
       Expect (Exit_Of (Run ("completion bash zsh")) = 2, "and only one");
       Expect (Exit_Of (Run ("completion bash --limit 5")) = 2, "completion accepts no report option");
       Expect (Exit_Of (Run ("help --format json")) = 2, "nor does help itself");
+      Expect (Contains (Errors (Run ("completion bash --no-color")), "option --no-color is not accepted"),
+              "a rejected --no-color is named as given");
+      Expect (Contains (Errors (Run ("summary --color never --no-color")), "option --no-color was given more"),
+              "--color and --no-color together are one duplicate setting");
+      declare
+         Raised : Boolean := False;
+      begin
+         begin
+            Expect (Ada_Quality_Summary.Text.Bounded ("12345", 5) = "12345", "a report at the limit is kept");
+            Expect (Ada_Quality_Summary.Text.Bounded ("123456", 5) = "", "unreachable");
+         exception
+            when Ada_Quality_Summary.Report_Error => Raised := True;
+         end;
+         Expect (Raised, "a report over the output limit is a reporting failure in any format");
+      end;
       Expect (not Contains (Output (Run ("help completion")), "--database"), "and help says so");
       --  The committed manual page is the generated one and documents every command and option.
       declare

@@ -168,9 +168,7 @@ package Ada_Quality_Summary.Options is
       Has_Database    : Boolean := False;
       Format          : Output_Format := Terminal_Format;
       Color           : Color_Mode := Color_Auto;
-      Has_Color       : Boolean := False;
       Layout          : Layout_Mode := Normal_Layout;
-      Has_Layout      : Boolean := False;
       Width           : Natural := 0;
       Include_Removed : Boolean := False;
       Enabled_Only    : Boolean := False;
@@ -197,9 +195,7 @@ package Ada_Quality_Summary.Options is
    --  @field Has_Database Whether `--database` was supplied.
    --  @field Format Output format.
    --  @field Color Color mode.
-   --  @field Has_Color Whether a color option was supplied.
    --  @field Layout Terminal layout.
-   --  @field Has_Layout Whether `--layout` was supplied.
    --  @field Width Explicit display width, or zero to detect.
    --  @field Include_Removed Whether tombstoned projects are included.
    --  @field Enabled_Only Whether only enabled projects are included.

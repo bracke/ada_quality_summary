@@ -1,6 +1,4 @@
-with Ada.Characters.Handling;
 with Ada.Containers.Ordered_Maps;
-with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 with Ada_Quality.Types;
@@ -33,8 +31,22 @@ package body Ada_Quality_Summary.SARIF is
    function File_URI (Path : String) return String is
      ("file://" & Encode (Path) & (if Path'Length > 0 and then Path (Path'Last) = '/' then "" else "/"));
 
-   function Base_Id (Project_Id : Positive) return String is
-     ("project-" & Ada.Strings.Fixed.Trim (Positive'Image (Project_Id), Ada.Strings.Left));
+   --  Root with exactly one trailing slash.
+   function Directory_Of (Root : String) return String is
+     (if Root'Length > 0 and then Root (Root'Last) = '/' then Root else Root & "/");
+
+   function Is_Inside (Root, Path : String) return Boolean is
+     (Path & "/" = Directory_Of (Root) or else Path = Directory_Of (Root) or else
+      (Path'Length > Directory_Of (Root)'Length and then
+       Path (Path'First .. Path'First + Directory_Of (Root)'Length - 1) = Directory_Of (Root)));
+
+   function Relative (Root, Path : String) return String is
+     (if not Is_Inside (Root, Path) then Path
+      elsif Path'Length <= Directory_Of (Root)'Length then ""
+      else Path (Path'First + Directory_Of (Root)'Length .. Path'Last));
+
+   --  The project-relative file a finding points at: its path, or the project manifest when it has none.
+   Manifest : constant String := "alire.toml";
 
    function Level_Of (Level : Severity) return String is
      (case Level is
@@ -44,15 +56,15 @@ package body Ada_Quality_Summary.SARIF is
 
    package Rule_Maps is new Ada.Containers.Ordered_Maps (Indicator_Id, Natural);
 
-   package Name_Maps is new Ada.Containers.Ordered_Maps (Positive, Ada.Strings.Unbounded.Unbounded_String);
+   package Project_Maps is new Ada.Containers.Ordered_Maps (Positive, Project_Summary);
 
    function Render
-     (Item : Ada_Quality_Summary.Reports.Report; Pretty : Boolean := False;
+     (Item : Ada_Quality_Summary.Reports.Report; Source_Root : String; Pretty : Boolean := False;
       Maximum_Bytes : Positive := Ada_Quality_Summary.JSON.Default_Maximum_Bytes) return String
    is
-      Doc   : Document;
-      Rules : Rule_Maps.Map;
-      Names : Name_Maps.Map;
+      Doc      : Document;
+      Rules    : Rule_Maps.Map;
+      Projects : Project_Maps.Map;
 
       function Str (Value : String) return Node is (Doc.New_String (Value));
       function Nat (Value : Natural) return Node is (Doc.New_Integer (Long_Long_Integer (Value)));
@@ -89,8 +101,7 @@ package body Ada_Quality_Summary.SARIF is
                Put (Rule, "name", Str (Descriptor.Name.all));
                Put (Rule, "shortDescription", Text_Object (Descriptor.Name.all));
                Put (Properties, "category",
-                    Str (Ada.Characters.Handling.To_Lower
-                           (Ada_Quality.Indicators.Indicator_Category'Image (Descriptor.Category))));
+                    Str (Image (Descriptor.Category)));
                Put (Rule, "properties", Properties);
                Doc.Append (List, Rule);
             end;
@@ -98,32 +109,37 @@ package body Ada_Quality_Summary.SARIF is
          return List;
       end Rules_Array;
 
+      --  The one location of a finding, relative to the source root when the project lies inside it.
       function Location_Array (Finding : Finding_Summary) return Node is
          List     : constant Node := Doc.New_Array;
          Location : constant Node := Doc.New_Object;
          Physical : constant Node := Doc.New_Object;
          Artifact : constant Node := Doc.New_Object;
+         Project  : constant String := To_String (Projects.Element (Finding.Project_Id).Project_Path);
+         File     : constant String := (if Length (Finding.Path) > 0 then To_String (Finding.Path) else Manifest);
+         Inner    : constant String := Relative (Source_Root, Project);
       begin
-         if Length (Finding.Path) > 0 then
-            Put (Artifact, "uri", Str (Encode (To_String (Finding.Path))));
-            Put (Artifact, "uriBaseId", Str (Base_Id (Finding.Project_Id)));
-            Put (Physical, "artifactLocation", Artifact);
-            if Finding.Line > 0 then
-               declare
-                  Region : constant Node := Doc.New_Object;
-               begin
-                  Put (Region, "startLine", Nat (Finding.Line));
-                  Put (Physical, "region", Region);
-               end;
-            end if;
-            Put (Location, "physicalLocation", Physical);
-            Doc.Append (List, Location);
+         if Is_Inside (Source_Root, Project) then
+            Put (Artifact, "uri", Str (Encode (if Inner = "" then File else Inner & "/" & File)));
+            Put (Artifact, "uriBaseId", Str (Source_Root_Id));
+         else
+            Put (Artifact, "uri", Str (File_URI (Project) & Encode (File)));
          end if;
+         Put (Physical, "artifactLocation", Artifact);
+         if Finding.Line > 0 and then Length (Finding.Path) > 0 then
+            declare
+               Region : constant Node := Doc.New_Object;
+            begin
+               Put (Region, "startLine", Nat (Finding.Line));
+               Put (Physical, "region", Region);
+            end;
+         end if;
+         Put (Location, "physicalLocation", Physical);
+         Doc.Append (List, Location);
          return List;
       end Location_Array;
 
-      function Name_Of (Project_Id : Positive) return String is
-        (if Names.Contains (Project_Id) then To_String (Names.Element (Project_Id)) else "");
+      function Name_Of (Project_Id : Positive) return String is (To_String (Projects.Element (Project_Id).Name));
 
       function Result_Object (Finding : Finding_Summary) return Node is
          Result       : constant Node := Doc.New_Object;
@@ -155,24 +171,18 @@ package body Ada_Quality_Summary.SARIF is
          Put (Properties, "run_id", Nat (Finding.Run_Id));
          Put (Properties, "rule", Str (To_String (Finding.Rule)));
          Put (Properties, "severity",
-              Str (Ada.Characters.Handling.To_Lower (Severity'Image (Finding.Level))));
+              Str (Image (Finding.Level)));
          Put (Result, "properties", Properties);
          return Result;
       end Result_Object;
 
-      --  One `file:` base per selected project, so project-relative locations resolve.
+      --  The source root that relative locations resolve against.
       function Bases_Object return Node is
          Object : constant Node := Doc.New_Object;
+         Base   : constant Node := Doc.New_Object;
       begin
-         for Project of Item.Portfolio.Projects loop
-            declare
-               Base : constant Node := Doc.New_Object;
-            begin
-               Put (Base, "uri", Str (File_URI (To_String (Project.Project_Path))));
-               Put (Base, "description", Text_Object (To_String (Project.Name)));
-               Put (Object, Base_Id (Project.Project_Id), Base);
-            end;
-         end loop;
+         Put (Base, "uri", Str (File_URI (Source_Root)));
+         Put (Object, Source_Root_Id, Base);
          return Object;
       end Bases_Object;
 
@@ -184,7 +194,7 @@ package body Ada_Quality_Summary.SARIF is
       Results : constant Node := Doc.New_Array;
    begin
       for Project of Item.Portfolio.Projects loop
-         Names.Include (Project.Project_Id, Project.Name);
+         Projects.Include (Project.Project_Id, Project);
       end loop;
       Put (Root, "$schema", Str (Schema_URI));
       Put (Root, "version", Str (SARIF_Version));

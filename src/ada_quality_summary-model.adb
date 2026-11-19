@@ -1,3 +1,4 @@
+with Ada.Characters.Handling;
 with Ada.Strings.Fixed;
 
 package body Ada_Quality_Summary.Model is
@@ -40,6 +41,18 @@ package body Ada_Quality_Summary.Model is
          when Newer_Running => "running",
          when Newer_Interrupted => "interrupted",
          when Newer_Invalid => "invalid");
+
+   function Image (Level : Severity) return String is (Ada.Characters.Handling.To_Lower (Severity'Image (Level)));
+
+   function Image (Category : Ada_Quality.Indicators.Indicator_Category) return String is
+     (Ada.Characters.Handling.To_Lower (Ada_Quality.Indicators.Indicator_Category'Image (Category)));
+
+   function Image (State : Assessment_Status) return String is
+     (case State is
+         when Assessment_Running => "running",
+         when Assessment_Completed => "completed",
+         when Assessment_Invalid => "invalid",
+         when Assessment_Interrupted => "interrupted");
 
    function Image (Kind : Report_Kind) return String is
      (case Kind is

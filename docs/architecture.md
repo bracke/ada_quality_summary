@@ -54,7 +54,8 @@ computation error never leaves partial JSON on standard output.
 | `.Filtering` | Exact project and indicator resolution, population filters, deterministic sorting, row limits. |
 | `.Aggregation` | Project rows, portfolio totals, indicator matrix, finding collection. |
 | `.Trends` | Adapter over `Ada_Quality.History`: baselines, regressions, histories, metric series, daily states. |
-| `.Reports` | Assembly of the single typed report that both renderers consume. |
+| `.Reports` | The single typed report that every renderer consumes, and `Build`, which runs the assembly steps. |
+| `.Reports.Assembly` | Private: the steps over an explicit context: provenance, project selection, baseline comparisons, the fields of each report kind, and the `--fail-on` counts. |
 | `.Terminal` | Width-aware terminal rendering of a report, and the same sections as Markdown. |
 | `.Terminal.Environment` | Terminal detection, width, color policy, and locale, through `hostkit`. |
 | `.Terminal.Cells` | Display-cell measurement, truncation, and padding. |
@@ -98,7 +99,7 @@ busy wait is a timing parameter of loading and is declared with it in `Repositor
 | Finding records loaded | 2,000,000 | `Limits.Maximum_Findings` | `Ada_Quality.Reporting.Load_Limits` via `Limits.Default_Load` |
 | Terminal width | 500 columns | `Limits.Maximum_Width` | `Options.Maximum_Width` |
 | Displayed text field | 4,096 display cells | `Limits.Maximum_Field_Width` | `Terminal.Maximum_Field_Width` |
-| JSON document | 256 MiB | `Limits.Maximum_JSON_Bytes` | `JSON.Default_Maximum_Bytes` |
+| Report in any format | 256 MiB | `Limits.Maximum_Output_Bytes` | `JSON.Default_Maximum_Bytes`, `Text.Bounded` |
 | Result, measurement, execution, and event rows | 2,000,000 each | Ada Quality defaults | `Ada_Quality.Reporting.Load_Limits` |
 | Rows in all tables | 2,500,000 | Ada Quality default | `Ada_Quality.Reporting.Load_Limits` |
 | Persisted text | 256 MiB | Ada Quality default | `Ada_Quality.Reporting.Load_Limits` |
@@ -107,7 +108,7 @@ busy wait is a timing parameter of loading and is declared with it in `Repositor
 Each completed assessment stores 33 results, so the result-row limit admits about 60,000 completed assessments,
 fewer than the run limit; whichever limit a database reaches first is reported.
 
-Exceeding a load or JSON limit is a typed reporting failure (exit 3); machine-readable output is never truncated.
+Exceeding a load or output-size limit is a typed reporting failure (exit 3); no report is ever truncated.
 The JSON limit is checked on the serialized document, because `jsonlib` serializes a complete document tree; the
 output is then written in slices without a further copy.
 Terminal text fields longer than the field limit are shortened with an ellipsis.

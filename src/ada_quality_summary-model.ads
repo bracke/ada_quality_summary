@@ -24,6 +24,21 @@ package Ada_Quality_Summary.Model is
    --  @param State Classification.
    --  @return `passing`, `violations`, `incomplete`, or `unassessed`.
 
+   function Image (Level : Ada_Quality.Types.Severity) return String;
+   --  Return the stable spelling of a finding severity used in JSON, SARIF, and the message catalog.
+   --  @param Level Severity.
+   --  @return `info`, `low`, `medium`, `high`, or `critical`.
+
+   function Image (Category : Ada_Quality.Indicators.Indicator_Category) return String;
+   --  Return the stable spelling of an indicator category.
+   --  @param Category Registry category.
+   --  @return Lowercase category, such as `test`.
+
+   function Image (State : Ada_Quality.Types.Assessment_Status) return String;
+   --  Return the stable spelling of an assessment lifecycle state.
+   --  @param State Lifecycle state.
+   --  @return `running`, `completed`, `invalid`, or `interrupted`.
+
    function Parse (Text : String; State : out Project_Quality_State) return Boolean;
    --  Parse a stable classification spelling.
    --  @param Text Lowercase spelling.

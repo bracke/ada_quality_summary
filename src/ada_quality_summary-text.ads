@@ -24,6 +24,11 @@ package Ada_Quality_Summary.Text is
    --  @param Value Substituted text.
    --  @return Argument.
 
+   function Decimal (Value : Long_Long_Integer) return String;
+   --  Return an integer as decimal digits without the leading space of 'Image.
+   --  @param Value Integer.
+   --  @return Digits with an optional minus sign.
+
    function Arg (Name : String; Value : Long_Long_Integer) return Argument;
    --  Build one integer message argument.
    --  @param Name Placeholder name.
@@ -36,6 +41,13 @@ package Ada_Quality_Summary.Text is
    --  @param Args Placeholder values.
    --  @return Rendered text.
    --  @exception Report_Error The key is unknown or an argument is missing.
+
+   function Bounded (Report : String; Maximum_Bytes : Positive) return String;
+   --  Return a rendered report that fits the output size limit.
+   --  @param Report Complete report in any format.
+   --  @param Maximum_Bytes Size limit.
+   --  @return Report unchanged.
+   --  @exception Report_Error Report exceeds Maximum_Bytes.
 
    function Catalog_Is_Valid return Boolean;
    --  Validate the embedded catalog.

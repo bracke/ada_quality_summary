@@ -1,15 +1,14 @@
-with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Humanize.Status;
 with Humanize.Strings;
+with Ada_Quality_Summary.Text;
 
 package body Ada_Quality_Summary.Terminal.Cells is
    use Ada.Strings.Unbounded;
 
    Ellipsis : constant String := Character'Val (16#E2#) & Character'Val (16#80#) & Character'Val (16#A6#);
 
-   function Trimmed (Value : Long_Long_Integer) return String is
-     (Ada.Strings.Fixed.Trim (Long_Long_Integer'Image (Value), Ada.Strings.Both));
+   function Trimmed (Value : Long_Long_Integer) return String renames Ada_Quality_Summary.Text.Decimal;
 
    function Display_Width (Text : String) return Natural is (Humanize.Strings.ANSI_Display_Width (Text));
 

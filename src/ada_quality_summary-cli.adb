@@ -1,13 +1,14 @@
 with Ada.Command_Line;
+with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Exceptions;
 with Ada.IO_Exceptions;
-with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Ada.Text_IO.Text_Streams;
 with Ada_Quality_Summary.Completion;
 with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.JSON;
+with Ada_Quality_Summary.Limits;
 with Ada_Quality_Summary.Reports;
 with Ada_Quality_Summary.Repository;
 with Ada_Quality_Summary.SARIF;
@@ -49,12 +50,12 @@ package body Ada_Quality_Summary.CLI is
    begin
       if Invocation.Has_Database then
          return To_String (Invocation.Database);
-      elsif Ada.Environment_Variables.Exists ("ADA_QUALITY_DATABASE") and then
-        Ada.Environment_Variables.Value ("ADA_QUALITY_DATABASE")'Length > 0
+      elsif Ada.Environment_Variables.Exists (Database_Variable) and then
+        Ada.Environment_Variables.Value (Database_Variable)'Length > 0
       then
-         return Ada.Environment_Variables.Value ("ADA_QUALITY_DATABASE");
+         return Ada.Environment_Variables.Value (Database_Variable);
       end if;
-      return ".ada-quality.db";
+      return Default_Database;
    end Database_Path;
 
    function Column (Text : String; Width : Positive := 26) return String is
@@ -109,17 +110,19 @@ package body Ada_Quality_Summary.CLI is
    function Render (Item : Reports.Report; Invocation : Options.Options) return String is
      (case Invocation.Format is
          when JSON_Format => JSON.Render (Item, Invocation.Pretty),
-         when SARIF_Format => SARIF.Render (Item, Invocation.Pretty),
+         when SARIF_Format => SARIF.Render (Item, Ada.Directories.Current_Directory, Invocation.Pretty),
          when Terminal_Format =>
-            Terminal.Render
-              (Item,
-               (Width    => Terminal.Environment.Detect_Width (Invocation.Width),
-                Color    => Terminal.Environment.Use_Color (Invocation.Color),
-                Unicode  => Terminal.Environment.Unicode_Locale,
-                Layout   => Invocation.Layout,
-                Markdown => False)),
+            Bounded (Terminal.Render
+                       (Item,
+                        (Width    => Terminal.Environment.Detect_Width (Invocation.Width),
+                         Color    => Terminal.Environment.Use_Color (Invocation.Color),
+                         Unicode  => Terminal.Environment.Unicode_Locale,
+                         Layout   => Invocation.Layout,
+                         Markdown => False)),
+                     Limits.Maximum_Output_Bytes),
          when Markdown_Format =>
-            Terminal.Render (Item, (Layout => Invocation.Layout, Markdown => True, others => <>)));
+            Bounded (Terminal.Render (Item, (Layout => Invocation.Layout, Markdown => True, others => <>)),
+                     Limits.Maximum_Output_Bytes));
 
    --  The --fail-on conditions that hold, as `regressions (2), violations (1)`, or empty when none holds.
    function Gate_Failures (Item : Reports.Report; Invocation : Options.Options) return String is
@@ -128,7 +131,7 @@ package body Ada_Quality_Summary.CLI is
       for Condition in Gate_Condition loop
          if Invocation.Fail_On (Condition) and then Item.Gate (Condition) > 0 then
             Append (Result, (if Length (Result) = 0 then "" else ", ") & Image (Condition) & " (" &
-                      Ada.Strings.Fixed.Trim (Natural'Image (Item.Gate (Condition)), Ada.Strings.Left) & ")");
+                      Decimal (Long_Long_Integer (Item.Gate (Condition))) & ")");
          end if;
       end loop;
       return To_String (Result);

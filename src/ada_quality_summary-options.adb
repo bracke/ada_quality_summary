@@ -8,19 +8,19 @@ package body Ada_Quality_Summary.Options is
    use Ada_Quality_Summary.Text;
    use type Ada.Calendar.Time;
 
+   --  Report commands and report kinds are declared in the same order, so a report command is its report kind's
+   --  position, and the command word is the report type's spelling.
+   pragma Compile_Time_Error
+     (Report_Command'Pos (Report_Command'Last) - Report_Command'Pos (Report_Command'First) /=
+        Ada_Quality_Summary.Model.Report_Kind'Pos (Ada_Quality_Summary.Model.Report_Kind'Last),
+      "every report command needs exactly one report kind");
+
+   function Report_Of (Command : Report_Command) return Ada_Quality_Summary.Model.Report_Kind is
+     (Ada_Quality_Summary.Model.Report_Kind'Val (Command_Kind'Pos (Command) - Command_Kind'Pos (Report_Command'First)));
+
    function Name (Command : Command_Kind) return String is
      (case Command is
-         when Summary_Command => "summary",
-         when Projects_Command => "projects",
-         when Project_Command => "project",
-         when Indicators_Command => "indicators",
-         when Indicator_Command => "indicator",
-         when Problems_Command => "problems",
-         when Waivers_Command => "waivers",
-         when Regressions_Command => "regressions",
-         when Compare_Command => "compare",
-         when Trends_Command => "trends",
-         when History_Command => "history",
+         when Report_Command => Ada_Quality_Summary.Model.Image (Report_Of (Command)),
          when Help_Command => "help",
          when Completion_Command => "completion",
          when Version_Command => "version");
@@ -34,20 +34,6 @@ package body Ada_Quality_Summary.Options is
          when Help_Command => "help [COMMAND]",
          when Completion_Command => "completion SHELL",
          when others => Name (Command));
-
-   function Report_Of (Command : Report_Command) return Ada_Quality_Summary.Model.Report_Kind is
-     (case Command is
-         when Summary_Command => Ada_Quality_Summary.Model.Summary_Report,
-         when Projects_Command => Ada_Quality_Summary.Model.Projects_Report,
-         when Project_Command => Ada_Quality_Summary.Model.Project_Report,
-         when Indicators_Command => Ada_Quality_Summary.Model.Indicators_Report,
-         when Indicator_Command => Ada_Quality_Summary.Model.Indicator_Report,
-         when Problems_Command => Ada_Quality_Summary.Model.Problems_Report,
-         when Waivers_Command => Ada_Quality_Summary.Model.Waivers_Report,
-         when Regressions_Command => Ada_Quality_Summary.Model.Regressions_Report,
-         when Compare_Command => Ada_Quality_Summary.Model.Compare_Report,
-         when Trends_Command => Ada_Quality_Summary.Model.Trends_Report,
-         when History_Command => Ada_Quality_Summary.Model.History_Report);
 
    function Is_Collection (Command : Command_Kind) return Boolean is
      (Command in Summary_Command | Projects_Command | Indicators_Command | Indicator_Command | Problems_Command |
@@ -312,6 +298,15 @@ package body Ada_Quality_Summary.Options is
          Given (Option) := True;
       end Once;
 
+      --  `--color` and `--no-color` select one setting, so together they are a duplicate of the one given second.
+      procedure Once_Color (Option : Option_Kind) is
+      begin
+         if Given (Color_Option) or else Given (No_Color_Option) then
+            Fail ("error.duplicate_option", [Arg ("option", Spelling (Option))]);
+         end if;
+         Given (Option) := True;
+      end Once_Color;
+
       procedure Handle_Option (Item : String) is
          Equals     : constant Natural := Ada.Strings.Fixed.Index (Item, "=");
          Option     : constant String := (if Equals = 0 then Item else Item (Item'First .. Equals - 1));
@@ -347,7 +342,7 @@ package body Ada_Quality_Summary.Options is
                Once (Pretty_Option);
                Result.Pretty := True;
             elsif Option = Spelling (No_Color_Option) then
-               Once (Color_Option);
+               Once_Color (No_Color_Option);
                Result.Color := Color_Never;
             else
                return False;
@@ -363,7 +358,7 @@ package body Ada_Quality_Summary.Options is
                Once (Format_Option);
                Result.Format := Parse_Format (Option, Value);
             elsif Option = Spelling (Color_Option) then
-               Once (Color_Option);
+               Once_Color (Color_Option);
                Result.Color := Parse_Color (Option, Value);
             elsif Option = Spelling (Layout_Option) then
                Once (Layout_Option);
@@ -562,8 +557,6 @@ package body Ada_Quality_Summary.Options is
    begin
       Read_Arguments;
       Result.Has_Database := Given (Database_Option);
-      Result.Has_Color := Given (Color_Option);
-      Result.Has_Layout := Given (Layout_Option);
       Result.Has_Project := Given (Project_Option);
       Result.Has_Status := Given (Status_Option);
       if Resolve_Help_And_Version then

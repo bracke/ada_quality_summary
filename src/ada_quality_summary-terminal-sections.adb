@@ -14,8 +14,7 @@ package body Ada_Quality_Summary.Terminal.Sections is
    --  Values
    ------------------------------------------------------------------------------------------------------------------
 
-   function Trimmed (Value : Long_Long_Integer) return String is
-     (Ada.Strings.Fixed.Trim (Long_Long_Integer'Image (Value), Ada.Strings.Both));
+   function Trimmed (Value : Long_Long_Integer) return String renames Ada_Quality_Summary.Text.Decimal;
 
    function Num (Value : Natural) return String is (Trimmed (Long_Long_Integer (Value)));
 
@@ -34,14 +33,10 @@ package body Ada_Quality_Summary.Terminal.Sections is
    function State_Label (State : Indicator_State) return String is
      (Ada_Quality_Summary.Text.Message ("state." & Image (State)));
 
-   function Lower (Text : String) return String renames Ada.Characters.Handling.To_Lower;
-
    function Category_Label (Category : Ada_Quality.Indicators.Indicator_Category) return String is
-     (Ada_Quality_Summary.Text.Message
-        ("category." & Lower (Ada_Quality.Indicators.Indicator_Category'Image (Category))));
+     (Ada_Quality_Summary.Text.Message ("category." & Image (Category)));
 
-   function Severity_Label (Level : Severity) return String is
-     (Ada.Characters.Handling.To_Upper (Severity'Image (Level)));
+   function Severity_Label (Level : Severity) return String is (Ada.Characters.Handling.To_Upper (Image (Level)));
 
    function Kind_Label (Kind : Ada_Quality.History.Regression_Kind) return String is (Ada_Quality.History.Image (Kind));
 

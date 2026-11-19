@@ -52,7 +52,8 @@ package body Ada_Quality_Summary.Text is
      "en.error.prefix = ada-quality-summary: {message}" & LF &
      "en.error.hint = run ada-quality-summary help for usage" & LF &
      "en.error.output = cannot write report output: {message}" & LF &
-     "en.error.json_size = JSON report of {size} bytes exceeds the limit of {limit} bytes" & LF &
+     "en.error.output_size = report of {size} bytes exceeds the limit of {limit} bytes; narrow it with --limit or" &
+       " a filter" & LF &
      "en.error.internal = internal error: {message}" & LF &
      "en.error.gate_failed = quality gate failed: {conditions}" & LF &
      "en.label.title = ADA QUALITY SUMMARY" & LF &
@@ -260,7 +261,7 @@ package body Ada_Quality_Summary.Text is
        " tables, Markdown, versioned JSON, or SARIF. It reads one coherent snapshot of the assessment database and" &
        " never runs measurements or modifies the database." & LF &
      "en.manual.env.ada_quality_database = Database path used when --database is not given; without either," &
-       " .ada-quality.db in the current directory." & LF &
+       " {default} in the current directory." & LF &
      "en.manual.env.no_color = Disables color when --color is auto." & LF &
      "en.manual.env.columns = Display width when standard output is not a terminal." & LF;
 
@@ -308,7 +309,20 @@ package body Ada_Quality_Summary.Text is
      (Name => To_Unbounded_String (Name), Value => To_Unbounded_String (Value));
 
    function Arg (Name : String; Value : Long_Long_Integer) return Argument is
-     (Arg (Name, Ada.Strings.Fixed.Trim (Long_Long_Integer'Image (Value), Ada.Strings.Both)));
+     (Arg (Name, Decimal (Value)));
+
+   function Bounded (Report : String; Maximum_Bytes : Positive) return String is
+   begin
+      if Report'Length > Maximum_Bytes then
+         raise Report_Error with
+           Message ("error.output_size", [Arg ("size", Long_Long_Integer (Report'Length)),
+                                          Arg ("limit", Long_Long_Integer (Maximum_Bytes))]);
+      end if;
+      return Report;
+   end Bounded;
+
+   function Decimal (Value : Long_Long_Integer) return String is
+     (Ada.Strings.Fixed.Trim (Long_Long_Integer'Image (Value), Ada.Strings.Both));
 
    function Has_Message (Key : String) return Boolean is
    begin

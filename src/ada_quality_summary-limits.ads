@@ -24,8 +24,8 @@ package Ada_Quality_Summary.Limits is
    Maximum_Field_Width : constant := 4_096;
    --  Largest displayed terminal text field, in display cells.
 
-   Maximum_JSON_Bytes : constant := 256 * 1024 * 1024;
-   --  Largest serialized JSON document, in bytes.
+   Maximum_Output_Bytes : constant := 256 * 1024 * 1024;
+   --  Largest report in any output format, in bytes.
 
    Default_Load : constant Ada_Quality.Reporting.Load_Limits :=
      (Max_Projects => Maximum_Projects, Max_Runs => Maximum_Runs, Max_Findings => Maximum_Findings, others => <>);

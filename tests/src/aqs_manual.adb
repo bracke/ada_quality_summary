@@ -36,7 +36,8 @@ package body Aqs_Manual is
    type Name_Access is access constant String;
 
    Environment : constant array (1 .. 3) of Name_Access :=
-     [new String'("ADA_QUALITY_DATABASE"), new String'("NO_COLOR"), new String'("COLUMNS")];
+     [new String'(Ada_Quality_Summary.Database_Variable), new String'(Ada_Quality_Summary.Color_Variable),
+      new String'(Ada_Quality_Summary.Width_Variable)];
 
    function Page return String is
       Result : Unbounded_String;
@@ -63,8 +64,11 @@ package body Aqs_Manual is
       end loop;
       Append (Result, ".SH ENVIRONMENT" & LF);
       for Variable of Environment loop
-         Tagged_Paragraph (Result, ".B " & Variable.all,
-                           Message ("manual.env." & Ada.Characters.Handling.To_Lower (Variable.all)));
+         Tagged_Paragraph
+           (Result, ".B " & Variable.all,
+            Ada_Quality_Summary.Text.Message
+              ("manual.env." & Ada.Characters.Handling.To_Lower (Variable.all),
+               [Ada_Quality_Summary.Text.Arg ("default", Ada_Quality_Summary.Default_Database)]));
       end loop;
       Append (Result, ".SH EXIT STATUS" & LF & Roff (Message ("help.exit")) & LF &
                 ".SH SEE ALSO" & LF & ".BR ada\-quality (1)" & LF);
