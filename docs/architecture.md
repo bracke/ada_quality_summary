@@ -45,7 +45,8 @@ computation error never leaves partial JSON on standard output.
 | `Ada_Quality_Summary` | Version constants and the three typed error categories. |
 | `.Limits` | Every reporting resource limit except the busy deadline, which belongs to `.Repository`. |
 | `.Criteria` | Sort keys and inclusive UTC-day bounds, shared by parsing, selection, history, and rendering. |
-| `.Options` | Strict command-line parsing and validation; the option table that help is generated from. |
+| `.Options` | The command and option tables that parsing, help, completion, and the manual are generated from; the validated invocation with each command's positional arguments in named fields. |
+| `.Options.Parsing` | Private: strict parsing over an explicit parser state: options and values, the command word, positional arguments assigned per command, and the scope, date, and presentation checks. |
 | `.Text` | User-visible message catalog rendered through `messages`. |
 | `.Rules` | Counting types: classification, newer-run and result states, indicator and portfolio totals. |
 | `.Rules.Counting` | SPARK-proved classification, tallying, and portfolio-total rules. |
@@ -55,13 +56,14 @@ computation error never leaves partial JSON on standard output.
 | `.Aggregation` | Project rows, portfolio totals, indicator matrix, finding collection. |
 | `.Trends` | Adapter over `Ada_Quality.History`: baselines, regressions, histories, metric series, daily states. |
 | `.Reports` | The single typed report that every renderer consumes, and `Build`, which runs the assembly steps. |
-| `.Reports.Assembly` | Private: the steps over an explicit context: provenance, project selection, baseline comparisons, the fields of each report kind, and the `--fail-on` counts. |
+| `.Reports.Assembly` | The steps `Build` runs over an explicit context, public so each can be checked alone: provenance, project selection, baseline comparisons, the fields of each report kind, and the `--fail-on` counts. |
 | `.Terminal` | Width-aware terminal rendering of a report, and the same sections as Markdown. |
 | `.Terminal.Environment` | Terminal detection, width, color policy, and locale, through `hostkit`. |
 | `.Terminal.Cells` | Display-cell measurement, truncation, and padding. |
 | `.Terminal.Output` | Private: the width-bounded output buffer, fields, notes, and tables, or their Markdown forms. |
 | `.Terminal.Sections` | Private: labels, roles, project names, and the sections several report layouts share. |
-| `.JSON` | Versioned JSON envelope and report-specific data objects; the shared size-checked serializer. |
+| `.JSON` | Versioned JSON envelope and report-specific data; the shared size-checked serializer. |
+| `.JSON.Objects` | Private: the objects several reports share (project, totals, indicator result, measurement, finding, regression, baseline, run), built into a caller's document. |
 | `.SARIF` | SARIF 2.1.0 log of the problems report. |
 | `.Completion` | Shell completion scripts generated from the command and option tables. |
 | `.CLI` | Orchestration, database-path precedence, help, the `--fail-on` gate, exit codes. |
@@ -109,6 +111,7 @@ Each completed assessment stores 33 results, so the result-row limit admits abou
 fewer than the run limit; whichever limit a database reaches first is reported.
 
 Exceeding a load or output-size limit is a typed reporting failure (exit 3); no report is ever truncated.
-The JSON limit is checked on the serialized document, because `jsonlib` serializes a complete document tree; the
-output is then written in slices without a further copy.
+The output limit is checked on the complete rendered report, because `jsonlib` serializes a whole document tree and
+the terminal and Markdown renderers build their text in memory; the output is then written in slices without a
+further copy.
 Terminal text fields longer than the field limit are shortened with an ellipsis.

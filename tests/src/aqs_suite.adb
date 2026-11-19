@@ -27,6 +27,7 @@ with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Filtering;
 with Ada_Quality_Summary.JSON;
 with Ada_Quality_Summary.Reports;
+with Ada_Quality_Summary.Reports.Assembly;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
@@ -57,7 +58,8 @@ package body Aqs_Suite is
       T037, T038, T039, T040, T041, T042, T043, T044, T045, T046, T047, T048, T049, T050,
       X_Options, X_Precedence, X_Properties, X_Display, X_Catalog, X_Round_Trip, X_Help, X_Concurrent_Readers,
       X_Recovering_Writer, X_Killed_Reader, X_Layouts, X_Sorting, X_Baselines, X_Lifecycle, X_Executions,
-      X_Report_Fields, X_Input_Edges, X_Gate, X_Compare, X_Markdown, X_SARIF, X_Waivers, X_Completion);
+      X_Report_Fields, X_Input_Edges, X_Gate, X_Compare, X_Markdown, X_SARIF, X_Waivers, X_Completion, X_Scope,
+      X_Manual);
 
    type Title_Access is access constant String;
 
@@ -134,7 +136,9 @@ package body Aqs_Suite is
       X_Markdown => new String'("Markdown_Output"),
       X_SARIF => new String'("SARIF_Output"),
       X_Waivers => new String'("Waiver_Report"),
-      X_Completion => new String'("Shell_Completion_And_Manual")];
+      X_Completion => new String'("Shell_Completion"),
+      X_Scope => new String'("Option_Scope"),
+      X_Manual => new String'("Manual_Page")];
 
    type Acceptance_Test (Id : Test_Id) is new AUnit.Simple_Test_Cases.Test_Case with null record;
    overriding function Name (Item : Acceptance_Test) return AUnit.Message_String;
@@ -164,17 +168,6 @@ package body Aqs_Suite is
       else Absolute ("bin/" & Name));
    function Schemas return String is (Absolute ("../schemas"));
 
-   function Shape
-     (Violations : String := ""; Unknowns : String := ""; NA : String := ""; Policy : String := "policy-a";
-      Toolchain : String := "toolchain-a"; Findings : Natural := 1; Fingerprint : String := "";
-      Coverage : Long_Long_Integer := 9_500; Status : Assessment_Status := Assessment_Completed;
-      Source : String := "source-a"; Level : Severity := Medium; Unknown_Run : Execution_Status := Blocked;
-      Waivers : String := "") return Plan is
-     ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
-       Findings => Findings, Fingerprint => To_Unbounded_String (Fingerprint), Level => Level,
-       Coverage => Coverage, Source => To_Unbounded_String (Source), Policy => To_Unbounded_String (Policy),
-       Toolchain => To_Unbounded_String (Toolchain), Status => Status, Unknown_Run => Unknown_Run,
-       Waivers => Set_Of (Waivers)));
 
    --  A fresh fixture directory and the absolute path of its (not yet created) database.
    function New_Database (Name : String) return String is (Absolute (Dir (Name)) & "/quality.db");
@@ -522,8 +515,8 @@ package body Aqs_Suite is
    package body Review_Tests is separate;
    use Review_Tests;
 
-   --  Additions: the --fail-on quality gate, explicit comparisons, Markdown and SARIF output, the waiver report, and
-   --  shell completion with the manual page
+   --  Additions: the --fail-on quality gate, explicit comparisons, Markdown and SARIF output, the waiver report, shell
+   --  completion, option scope, and the manual page
    package Feature_Tests is
       procedure Quality_Gate;
       procedure Explicit_Comparison;
@@ -531,6 +524,8 @@ package body Aqs_Suite is
       procedure SARIF_Output;
       procedure Waiver_Report;
       procedure Shell_Completion;
+      procedure Option_Scope;
+      procedure Manual_Page;
    end Feature_Tests;
    package body Feature_Tests is separate;
    use Feature_Tests;
@@ -593,6 +588,8 @@ package body Aqs_Suite is
    procedure Run_SARIF_Output is new Ignoring_Id (SARIF_Output);
    procedure Run_Waiver_Report is new Ignoring_Id (Waiver_Report);
    procedure Run_Shell_Completion is new Ignoring_Id (Shell_Completion);
+   procedure Run_Option_Scope is new Ignoring_Id (Option_Scope);
+   procedure Run_Manual_Page is new Ignoring_Id (Manual_Page);
 
    type Runner is access procedure (Id : Test_Id);
 
@@ -636,7 +633,9 @@ package body Aqs_Suite is
       X_Markdown => Run_Markdown_Output'Access,
       X_SARIF => Run_SARIF_Output'Access,
       X_Waivers => Run_Waiver_Report'Access,
-      X_Completion => Run_Shell_Completion'Access];
+      X_Completion => Run_Shell_Completion'Access,
+      X_Scope => Run_Option_Scope'Access,
+      X_Manual => Run_Manual_Page'Access];
 
    procedure Dispatch (Id : Test_Id) is
    begin

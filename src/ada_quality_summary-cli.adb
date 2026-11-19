@@ -67,7 +67,7 @@ package body Ada_Quality_Summary.CLI is
    function Help_Text (Invocation : Options.Options) return String is
       Result : Unbounded_String;
    begin
-      if not Invocation.Has_Target then
+      if not Invocation.Has_Topic then
          Append (Result, Message ("help.usage") & LF & LF & Message ("help.commands") & LF);
          for Command in Named_Command loop
             Append (Result, "  " & Column (Usage (Command)) & Message ("help.cmd." & Name (Command)) & LF);
@@ -80,14 +80,9 @@ package body Ada_Quality_Summary.CLI is
          return To_String (Result);
       end if;
       declare
-         Topic : Command_Kind := Summary_Command;
+         Topic : constant Command_Kind := Invocation.Topic;
          Keys  : Unbounded_String;
       begin
-         for Command in Named_Command loop
-            if Name (Command) = To_String (Invocation.Target) then
-               Topic := Command;
-            end if;
-         end loop;
          Append (Result, Message ("help.command_usage", [Arg ("usage", Usage (Topic))]) & LF & LF &
                    "  " & Message ("help.cmd." & Name (Topic)) & LF & LF & Message ("help.accepts") & LF);
          for Option in Option_Kind loop

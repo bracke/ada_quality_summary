@@ -137,15 +137,22 @@ package body Unit_Tests is
       end;
       --  Each report compares a project with its baseline at most once, and only when it shows regressions.
       declare
+         --  The comparisons the assembly step makes for a command line.
          function Comparisons_For (Arguments : String) return Natural is
-            Store : Ada_Quality_Summary.Repository.Repository;
+            package Assembly renames Ada_Quality_Summary.Reports.Assembly;
+            Store      : Ada_Quality_Summary.Repository.Repository;
+            Invocation : constant Ada_Quality_Summary.Options.Options :=
+              Ada_Quality_Summary.Options.Parse (Arguments_Of (Arguments));
+            State      : Assembly.Context;
          begin
             Ada_Quality_Summary.Repository.Open (Store, Database);
             declare
                Data : constant Ada_Quality_Summary.Repository.Snapshot := Ada_Quality_Summary.Repository.Load (Store);
             begin
-               return Ada_Quality_Summary.Reports.Build
-                 (Data, Ada_Quality_Summary.Options.Parse (Arguments_Of (Arguments)), Database).Comparisons;
+               Assembly.Start (Data, Invocation, Database, State);
+               Assembly.Select_Projects (Data, Invocation, State);
+               Assembly.Compare_Selected (Data, Invocation, State);
+               return Natural (State.Compared.Length);
             end;
          end Comparisons_For;
       begin

@@ -44,6 +44,17 @@ package body Limit_Tests is
          end;
          Expect (Raised_JSON, "an oversized JSON document is a typed reporting failure");
       end;
+      declare
+         Raised : Boolean := False;
+      begin
+         begin
+            Expect (Ada_Quality_Summary.Text.Bounded ("12345", 5) = "12345", "a report at the limit is kept");
+            Expect (Ada_Quality_Summary.Text.Bounded ("123456", 5) = "", "unreachable");
+         exception
+            when Ada_Quality_Summary.Report_Error => Raised := True;
+         end;
+         Expect (Raised, "an oversized report in any format is a typed reporting failure");
+      end;
    end Limits;
 
    procedure Large is

@@ -38,6 +38,7 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | `.Aggregation` | `Build_Project`, `Build_Projects`, `Build_Totals`, `Build_Portfolio`, `Build_Indicator`, `Build_Indicators`, `Build_Findings`, `Findings_Of`, `State_Of`. |
 | `.Trends` | `Regressions`, `Compare_Pair`, `Run_Summary`, `History`, `Metric_Series`, `Undated_Runs`, `Daily_States`. |
 | `.Reports` | `Report`, `Build`; the report-kind table in the specification lists the fields each kind fills. |
+| `.Reports.Assembly` | `Context`, `Comparison`, `Comparison_Maps`, `Start`, `Select_Projects`, `Compare_Selected`, `Summarize_Population`, `Fill_Command`, `Count_Gate`. |
 | `.Terminal` | `Settings` (including the Markdown mode), `Render`. |
 | `.Terminal.Environment` | `Stdout_Is_Terminal`, `Clamp`, `Detect_Width`, `Use_Color`, `Unicode_Locale`. |
 | `.Terminal.Cells` | `Display_Width`, `Fit`, `Pad`, `Basis_Points_Image`. |

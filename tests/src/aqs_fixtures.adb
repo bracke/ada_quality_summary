@@ -79,6 +79,18 @@ package body Aqs_Fixtures is
                 (Ada_Quality.Finding_Identity.Create (Id, "review-waiver", Path, Message, Context => "waiver")));
    end Waiver_Of;
 
+   function Shape
+     (Violations : String := ""; Unknowns : String := ""; NA : String := ""; Policy : String := "policy-a";
+      Toolchain : String := "toolchain-a"; Findings : Natural := 1; Fingerprint : String := "";
+      Coverage : Long_Long_Integer := 9_500; Status : Assessment_Status := Assessment_Completed;
+      Source : String := "source-a"; Level : Severity := Medium; Unknown_Run : Execution_Status := Blocked;
+      Waivers : String := "") return Plan is
+     ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
+       Findings => Findings, Fingerprint => To_Unbounded_String (Fingerprint), Level => Level,
+       Coverage => Coverage, Source => To_Unbounded_String (Source), Policy => To_Unbounded_String (Policy),
+       Toolchain => To_Unbounded_String (Toolchain), Status => Status, Unknown_Run => Unknown_Run,
+       Waivers => Set_Of (Waivers)));
+
    function Build (Project_Id : Positive; Shape : Plan) return Assessment is
       Result : Assessment;
    begin

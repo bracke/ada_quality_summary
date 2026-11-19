@@ -110,7 +110,7 @@ package body Ada_Quality_Summary.Reports.Assembly is
       if Invocation.Command in Project_Command | History_Command then
          declare
             Id : constant Positive :=
-              Filtering.Resolve_Project (Data, To_String (Invocation.Target), Invocation.Include_Removed);
+              Filtering.Resolve_Project (Data, To_String (Invocation.Target_Project), Invocation.Include_Removed);
          begin
             Item.Filter.Project_Id := Id;
             Item.Project := Build_Project (Data, Repository.Project (Data, Id));
@@ -118,8 +118,8 @@ package body Ada_Quality_Summary.Reports.Assembly is
          end;
       elsif Invocation.Command = Compare_Command then
          Trends.Compare_Pair
-           (Data, Repository.Resolve_Run (Data, To_String (Invocation.Target)),
-            Repository.Resolve_Run (Data, To_String (Invocation.Second)), Item.Pair, Item.Regressions);
+           (Data, Repository.Resolve_Run (Data, To_String (Invocation.Baseline_Run)),
+            Repository.Resolve_Run (Data, To_String (Invocation.Current_Run)), Item.Pair, Item.Regressions);
          Item.Filter.Project_Id := Item.Pair.Project_Id;
          Item.Project := Build_Project (Data, Repository.Project (Data, Item.Pair.Project_Id));
          --  A tombstoned project's runs are compared only on request, as its name resolves only on request.
@@ -159,7 +159,6 @@ package body Ada_Quality_Summary.Reports.Assembly is
             Compared.Insert (Row.Project_Id, Result);
          end;
       end loop;
-      Item.Comparisons := Natural (Compared.Length);
       if Invocation.Command in Project_Command | History_Command then
          Item.Project.Regression_Count := Selected.First_Element.Regression_Count;
       end if;
@@ -223,7 +222,7 @@ package body Ada_Quality_Summary.Reports.Assembly is
    procedure Fill_Indicator (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
    Item     : Report renames State.Item;
    Selected : Project_Vectors.Vector renames State.Selected;
-      Id : constant Indicator_Id := Filtering.Resolve_Indicator (To_String (Invocation.Target));
+      Id : constant Indicator_Id := Filtering.Resolve_Indicator (To_String (Invocation.Indicator));
    begin
       Item.Indicator := Build_Indicator (Data, Selected, Id);
       for Row of Selected loop

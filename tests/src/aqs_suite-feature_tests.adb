@@ -449,28 +449,32 @@ package body Feature_Tests is
                     "regressions violations incomplete unassessed", "gate conditions");
       Expect_Equal (Ada_Quality_Summary.Completion.Sort_Keys (Ada_Quality_Summary.Options.Help_Command), "",
                     "help has no sort keys");
+   end Shell_Completion;
+
+   --  Positional arguments are assigned by command, and every command accepts only its own options.
+   procedure Option_Scope is
+   begin
       Expect (Exit_Of (Run ("completion tcsh")) = 2, "an unknown shell is an argument error");
       Expect (Exit_Of (Run ("completion")) = 2, "completion requires a shell");
       Expect (Exit_Of (Run ("completion bash zsh")) = 2, "and only one");
       Expect (Exit_Of (Run ("completion bash --limit 5")) = 2, "completion accepts no report option");
       Expect (Exit_Of (Run ("help --format json")) = 2, "nor does help itself");
+      Expect (not Contains (Output (Run ("help completion")), "--database"), "and help says so");
+      Expect (Contains (Errors (Run ("help frobnicate")), "unknown command frobnicate"), "a help topic is a command");
+      Expect (Contains (Errors (Run ("help summary projects")), "unexpected argument projects"), "one topic only");
+      Expect (Contains (Output (Run ("project alpha --help")), "project PROJECT"),
+              "--help describes the command it follows");
+      Expect (Contains (Errors (Run ("summary extra")), "unexpected argument extra"), "summary takes no argument");
+      Expect (Contains (Errors (Run ("indicator")), "indicator ID"), "indicator requires its ID");
       Expect (Contains (Errors (Run ("completion bash --no-color")), "option --no-color is not accepted"),
               "a rejected --no-color is named as given");
       Expect (Contains (Errors (Run ("summary --color never --no-color")), "option --no-color was given more"),
               "--color and --no-color together are one duplicate setting");
-      declare
-         Raised : Boolean := False;
-      begin
-         begin
-            Expect (Ada_Quality_Summary.Text.Bounded ("12345", 5) = "12345", "a report at the limit is kept");
-            Expect (Ada_Quality_Summary.Text.Bounded ("123456", 5) = "", "unreachable");
-         exception
-            when Ada_Quality_Summary.Report_Error => Raised := True;
-         end;
-         Expect (Raised, "a report over the output limit is a reporting failure in any format");
-      end;
-      Expect (not Contains (Output (Run ("help completion")), "--database"), "and help says so");
-      --  The committed manual page is the generated one and documents every command and option.
+   end Option_Scope;
+
+   --  The committed manual page is the generated one and documents every command and option.
+   procedure Manual_Page is
+   begin
       declare
          Page : constant String := Aqs_Manual.Page;
       begin
@@ -491,5 +495,5 @@ package body Feature_Tests is
          end loop;
          Expect (Contains (Page, ".B compare BASELINE CURRENT"), "the manual shows command usage");
       end;
-   end Shell_Completion;
+   end Manual_Page;
 end Feature_Tests;

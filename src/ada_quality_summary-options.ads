@@ -159,10 +159,12 @@ package Ada_Quality_Summary.Options is
 
    type Options is record
       Command         : Command_Kind := Summary_Command;
-      Target          : UString;
-      Has_Target      : Boolean := False;
-      Second          : UString;
-      Has_Second      : Boolean := False;
+      Target_Project  : UString;
+      Indicator       : UString;
+      Baseline_Run    : UString;
+      Current_Run     : UString;
+      Topic           : Command_Kind := Summary_Command;
+      Has_Topic       : Boolean := False;
       Shell           : Shell_Kind := Bash_Shell;
       Database        : UString;
       Has_Database    : Boolean := False;
@@ -186,11 +188,13 @@ package Ada_Quality_Summary.Options is
    end record;
    --  Validated invocation.
    --  @field Command Selected command.
-   --  @field Target Positional PROJECT, indicator ID, baseline assessment, shell, or help topic.
-   --  @field Has_Target Whether a positional argument was supplied.
-   --  @field Second Positional current assessment of `compare`.
-   --  @field Has_Second Whether a second positional argument was supplied.
-   --  @field Shell Shell named by `completion`.
+   --  @field Target_Project PROJECT of `project` and `history`.
+   --  @field Indicator ID of `indicator`.
+   --  @field Baseline_Run BASELINE of `compare`: a run identity or an assessment alias.
+   --  @field Current_Run CURRENT of `compare`.
+   --  @field Topic Command that `help` describes.
+   --  @field Has_Topic Whether `help` names a command.
+   --  @field Shell SHELL of `completion`.
    --  @field Database Explicit database path.
    --  @field Has_Database Whether `--database` was supplied.
    --  @field Format Output format.

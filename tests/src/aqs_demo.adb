@@ -1,6 +1,5 @@
 with Ada.Command_Line;
 with Ada.Directories;
-with Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with Ada_Quality.Types;
 with Aqs_Fixtures;
@@ -11,19 +10,17 @@ with Aqs_Fixtures;
 --  Creates DIRECTORY/quality.db with passing, violating, incomplete, unassessed, disabled, and removed projects,
 --  compatible and incompatible histories, and running and interrupted runs.
 procedure Aqs_Demo is
-   use Ada.Strings.Unbounded;
    use Ada_Quality.Types;
    use Aqs_Fixtures;
 
-   function Shape
+   --  Demonstration assessments treat PRF-01 as not applicable unless told otherwise.
+   function Demo
      (Violations : String := ""; Unknowns : String := ""; NA : String := "PRF-01"; Policy : String := "policy-a";
       Coverage : Long_Long_Integer := 9_500; Findings : Natural := 1; Level : Severity := Medium;
       Waivers : String := "") return Plan is
-     ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
-       Findings => Findings, Fingerprint => Null_Unbounded_String, Level => Level, Coverage => Coverage,
-       Source => To_Unbounded_String ("source-a"), Policy => To_Unbounded_String (Policy),
-       Toolchain => To_Unbounded_String ("toolchain-a"), Status => Assessment_Completed, Unknown_Run => Blocked,
-       Waivers => Set_Of (Waivers)));
+     (Aqs_Fixtures.Shape
+        (Violations, Unknowns, NA, Policy, Coverage => Coverage, Findings => Findings, Level => Level,
+         Waivers => Waivers));
 begin
    if Ada.Command_Line.Argument_Count /= 1 then
       Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, "usage: aqs_demo DIRECTORY");
@@ -52,16 +49,16 @@ begin
       Ids (5) := Register (Database, Projects, "archive");
       Ids (6) := Register (Database, Projects, "legacy");
       Ids (7) := Register (Database, Projects, "messages");
-      Run := Publish (Database, Build (Ids (1), Shape (Waivers => "SRC-03")));
-      Run := Publish (Database, Build (Ids (2), Shape (Coverage => 9_300)));
-      Run := Publish (Database, Build (Ids (2), Shape ("TST-03 DOC-01", Coverage => 8_700, Findings => 2,
+      Run := Publish (Database, Build (Ids (1), Demo (Waivers => "SRC-03")));
+      Run := Publish (Database, Build (Ids (2), Demo (Coverage => 9_300)));
+      Run := Publish (Database, Build (Ids (2), Demo ("TST-03 DOC-01", Coverage => 8_700, Findings => 2,
                                                        Level => High)));
-      Run := Publish (Database, Build (Ids (3), Shape ("SRC-01 SRC-04 DOC-01", "BLD-02 TST-04",
+      Run := Publish (Database, Build (Ids (3), Demo ("SRC-01 SRC-04 DOC-01", "BLD-02 TST-04",
                                                        Waivers => "SRC-03 SRC-06")));
-      Run := Publish (Database, Build (Ids (4), Shape ("DOC-01")));
-      Run := Publish (Database, Build (Ids (4), Shape ("DOC-01 REL-01", Policy => "policy-b")));
+      Run := Publish (Database, Build (Ids (4), Demo ("DOC-01")));
+      Run := Publish (Database, Build (Ids (4), Demo ("DOC-01 REL-01", Policy => "policy-b")));
       Run := Start (Database, Ids (4));
-      Run := Publish (Database, Build (Ids (7), Shape ("SEC-01", Level => Critical)));
+      Run := Publish (Database, Build (Ids (7), Demo ("SEC-01", Level => Critical)));
       Interrupt (Database, Start (Database, Ids (7)));
       Set_Enabled (Database, Ids (6), False);
       Remove (Database, Ids (5));

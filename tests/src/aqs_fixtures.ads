@@ -70,6 +70,28 @@ package Aqs_Fixtures is
    --  @field Waivers Passing indicators that record a review waiver, as Ada Quality does for a valid structured
    --  `AQ-WAIVER` comment: one low-severity `review-waiver` finding naming its target and justification.
 
+   function Shape
+     (Violations : String := ""; Unknowns : String := ""; NA : String := ""; Policy : String := "policy-a";
+      Toolchain : String := "toolchain-a"; Findings : Natural := 1; Fingerprint : String := "";
+      Coverage : Long_Long_Integer := 9_500; Status : Assessment_Status := Assessment_Completed;
+      Source : String := "source-a"; Level : Severity := Medium; Unknown_Run : Execution_Status := Blocked;
+      Waivers : String := "") return Plan;
+   --  Return a plan from space-separated indicator lists, such as `Shape ("DOC-01", Unknowns => "TST-04")`.
+   --  @param Violations Violated indicators.
+   --  @param Unknowns Indicators without usable evidence.
+   --  @param NA Indicators that do not apply.
+   --  @param Policy Policy fingerprint.
+   --  @param Toolchain Toolchain fingerprint.
+   --  @param Findings Findings per violated indicator.
+   --  @param Fingerprint Finding identity context, or empty to derive one per finding.
+   --  @param Coverage TST-03 basis points.
+   --  @param Status Terminal lifecycle state.
+   --  @param Source Source fingerprint.
+   --  @param Level Finding severity.
+   --  @param Unknown_Run Execution state of unknown results.
+   --  @param Waivers Passing indicators with a review waiver.
+   --  @return Plan.
+
    function Build (Project_Id : Positive; Shape : Plan) return Assessment;
    --  Build a publishable assessment.
    --  @param Project_Id Owning project.

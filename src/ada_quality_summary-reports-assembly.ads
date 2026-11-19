@@ -4,8 +4,9 @@ with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
 
 --  The steps that build a report, each over an explicit Context: start the report, select the projects, compare them
---  with their baselines, fill the fields of the report kind, and count the --fail-on conditions.
-private package Ada_Quality_Summary.Reports.Assembly is
+--  with their baselines, fill the fields of the report kind, and count the --fail-on conditions. Reports.Build runs
+--  them in that order; they are public so that each step can be checked on its own.
+package Ada_Quality_Summary.Reports.Assembly is
    --  The steps that build a report.
 
    type Comparison is record
@@ -17,7 +18,7 @@ private package Ada_Quality_Summary.Reports.Assembly is
    --  @field Changes Regressions against the baseline.
 
    package Comparison_Maps is new Ada.Containers.Ordered_Maps (Positive, Comparison);
-   --  Comparisons by project identity.
+   --  Comparisons by project identity; inserting a project twice fails, so each is compared at most once.
 
    type Context is record
       Item     : Report;

@@ -14,17 +14,17 @@ with Ada_Quality_Summary.Repository;
 --
 --  | Kind        | Fields beyond Metadata, Filter, Database_Label, Limit, Portfolio, and Row_Count            |
 --  |-------------|----------------------------------------------------------------------------------------------|
---  | summary     | Common, finding counts and Groups, regression counts, Baselines, Comparisons                 |
---  | projects    | Comparisons (for the per-project regression counts)                                          |
---  | project     | Project, Assessment, Findings and counts, Regressions and counts, Baselines, Comparisons     |
+--  | summary     | Common, finding counts and Groups, regression counts, Baselines                              |
+--  | projects    | per-project regression counts in Portfolio                                                   |
+--  | project     | Project, Assessment, Findings and counts, Regressions and counts, Baselines                  |
 --  | indicators  | Indicators                                                                                   |
 --  | indicator   | Indicator, Indicator_Rows                                                                    |
 --  | problems    | Findings and counts, Groups                                                                  |
 --  | waivers     | Waivers, Waiver_Total, Waiver_Projects, Waiver_Groups                                        |
---  | regressions | Regressions and counts, Baselines, Comparisons                                               |
+--  | regressions | Regressions and counts, Baselines                                                            |
 --  | compare     | Project, Pair, Regressions and counts                                                        |
 --  | trends      | Series, Excluded_Observations, Daily, Undated, Since, Until_Date                             |
---  | history     | Project, History and lifecycle counts, Undated, Since, Until_Date, Comparisons               |
+--  | history     | Project, History and lifecycle counts, Undated, Since, Until_Date                            |
 --
 --  Every kind fills Gate.
 package Ada_Quality_Summary.Reports is
@@ -94,7 +94,6 @@ package Ada_Quality_Summary.Reports is
       By_Kind           : Kind_Counts := [others => 0];
       Projects_Affected : Natural := 0;
       Baselines         : Ada_Quality_Summary.Model.Baseline_Info_Vectors.Vector;
-      Comparisons       : Natural := 0;
       Pair              : Ada_Quality_Summary.Model.Pair_Comparison;
       History           : Ada_Quality_Summary.Model.History_Summary_Vectors.Vector;
       Completed_Count   : Natural := 0;
@@ -137,7 +136,6 @@ package Ada_Quality_Summary.Reports is
    --  @field By_Kind Regressions per classification.
    --  @field Projects_Affected Projects with regressions.
    --  @field Baselines Baseline selection per project.
-   --  @field Comparisons Baseline comparisons made while building the report; each project is compared at most once.
    --  @field Pair The two assessments a compare report compares.
    --  @field History Runs (after limit).
    --  @field Completed_Count Completed runs.
