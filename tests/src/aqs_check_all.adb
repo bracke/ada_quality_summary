@@ -9,10 +9,11 @@ with Project_Tools.Files;
 with Project_Tools.Processes;
 with Project_Tools.Release_Checks;
 with Aqs_Evidence;
+with Aqs_Manual;
 with Aqs_Schema;
 
 --  Release checker: required structure, toolchain, validation build, GNATdoc, SPARK proof, staged pin-free release,
---  AUnit suite, coverage evidence, and schema self-consistency.
+--  AUnit suite, coverage evidence, schema self-consistency, and a current manual page.
 --
 --  Usage: tests/bin/check_all [--skip-build]
 procedure Aqs_Check_All is
@@ -27,12 +28,12 @@ procedure Aqs_Check_All is
       new String'("docs/reporting-integration.md"), new String'("docs/json-contracts.md"),
       new String'("docs/testing.md"), new String'("tests/alire.toml"), new String'("tests/coverage.gpr"),
       new String'("tests/ada_quality_summary_tests.gpr"), new String'("coverage/gcov-summary.txt"),
-      new String'("spark_rules.gpr")];
+      new String'("spark_rules.gpr"), new String'(Aqs_Manual.Page_Path)];
 
    Reports : constant Text_List :=
      [new String'("summary"), new String'("projects"), new String'("project"), new String'("indicators"),
-      new String'("indicator"), new String'("problems"), new String'("regressions"), new String'("trends"),
-      new String'("history")];
+      new String'("indicator"), new String'("problems"), new String'("waivers"), new String'("regressions"),
+      new String'("compare"), new String'("trends"), new String'("history")];
 
    Root  : constant String :=
      Project_Tools.Files.Find_Root_Upward (Ada.Directories.Current_Directory, "ada_quality_summary.gpr");
@@ -63,6 +64,10 @@ procedure Aqs_Check_All is
       end loop;
       if Aqs_Schema.Validate (Project_Tools.Files.Join (Root, "schemas"), "summary.schema.json", "{}") = "" then
          Project_Tools.Release_Checks.Fail ("the schema validator accepts an empty summary");
+      end if;
+      if Project_Tools.Files.Read_Raw_File (Project_Tools.Files.Join (Root, Aqs_Manual.Page_Path)) /= Aqs_Manual.Page
+      then
+         Project_Tools.Release_Checks.Fail ("the manual page is stale; run tests/bin/aqs_manpage");
       end if;
    end Check_Structure;
 

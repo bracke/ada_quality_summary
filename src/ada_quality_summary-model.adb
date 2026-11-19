@@ -49,7 +49,9 @@ package body Ada_Quality_Summary.Model is
          when Indicators_Report => "indicators",
          when Indicator_Report => "indicator",
          when Problems_Report => "problems",
+         when Waivers_Report => "waivers",
          when Regressions_Report => "regressions",
+         when Compare_Report => "compare",
          when Trends_Report => "trends",
          when History_Report => "history");
 
@@ -89,6 +91,30 @@ package body Ada_Quality_Summary.Model is
      ((Project_Id => Project_Id, Run_Id => Run_Id, Indicator => Finding.Indicator, Rule => Finding.Rule,
        Level => Finding.Level, Message => Finding.Message, Path => Finding.Relative_Path, Line => Finding.Line,
        Fingerprint => Finding.Fingerprint));
+
+   Target_Field        : constant String := "target=";
+   Justification_Field : constant String := " justification=";
+
+   function Waiver_Target (Message : String) return String is
+      Start : constant Natural := Ada.Strings.Fixed.Index (Message, Target_Field);
+   begin
+      if Start = 0 then
+         return "";
+      end if;
+      declare
+         First : constant Positive := Start + Target_Field'Length;
+         Stop  : constant Natural := Ada.Strings.Fixed.Index (Message, Justification_Field, From => Start);
+      begin
+         return Message (First .. (if Stop = 0 then Message'Last else Stop - 1));
+      end;
+   end Waiver_Target;
+
+   function Waiver_Justification (Message : String) return String is
+      Field : constant String := Justification_Field (Justification_Field'First + 1 .. Justification_Field'Last);
+      Start : constant Natural := Ada.Strings.Fixed.Index (Message, Field);
+   begin
+      return (if Start = 0 then Message else Message (Start + Field'Length .. Message'Last));
+   end Waiver_Justification;
 
    function Basename (Path : String) return String is
       Slash : constant Natural := Ada.Strings.Fixed.Index (Path, "/", Ada.Strings.Backward);

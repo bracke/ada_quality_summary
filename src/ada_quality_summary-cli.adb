@@ -2,12 +2,15 @@ with Ada.Command_Line;
 with Ada.Environment_Variables;
 with Ada.Exceptions;
 with Ada.IO_Exceptions;
+with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Ada.Text_IO.Text_Streams;
+with Ada_Quality_Summary.Completion;
 with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.JSON;
 with Ada_Quality_Summary.Reports;
 with Ada_Quality_Summary.Repository;
+with Ada_Quality_Summary.SARIF;
 with Ada_Quality_Summary.Terminal;
 with Ada_Quality_Summary.Terminal.Environment;
 with Ada_Quality_Summary.Text;
@@ -54,30 +57,19 @@ package body Ada_Quality_Summary.CLI is
       return ".ada-quality.db";
    end Database_Path;
 
-   function Column (Text : String; Width : Positive := 24) return String is
+   function Column (Text : String; Width : Positive := 26) return String is
      ((if Text'Length >= Width then Text & " " else Text & [1 .. Width - Text'Length => ' ']));
 
-   function Usage_Of (Command : Command_Kind) return String is
-     (case Command is
-         when Project_Command => "project PROJECT",
-         when Indicator_Command => "indicator ID",
-         when History_Command => "history PROJECT",
-         when Help_Command => "help [COMMAND]",
-         when others => Name (Command));
-
-   function Usage_Of (Option : Option_Kind) return String is
-     (if Value_Name (Option) = "" then Spelling (Option) else Spelling (Option) & " " & Value_Name (Option));
-
    function Option_Line (Option : Option_Kind) return String is
-     ("  " & Column (Usage_Of (Option), 36) & Message ("help.opt." & Help_Key (Option)) & LF);
+     ("  " & Column (Usage (Option), 40) & Message ("help.opt." & Help_Key (Option)) & LF);
 
    function Help_Text (Invocation : Options.Options) return String is
       Result : Unbounded_String;
    begin
       if not Invocation.Has_Target then
          Append (Result, Message ("help.usage") & LF & LF & Message ("help.commands") & LF);
-         for Command in Summary_Command .. Help_Command loop
-            Append (Result, "  " & Column (Usage_Of (Command)) & Message ("help.cmd." & Name (Command)) & LF);
+         for Command in Named_Command loop
+            Append (Result, "  " & Column (Usage (Command)) & Message ("help.cmd." & Name (Command)) & LF);
          end loop;
          Append (Result, LF & Message ("help.options") & LF);
          for Option in Option_Kind loop
@@ -90,12 +82,12 @@ package body Ada_Quality_Summary.CLI is
          Topic : Command_Kind := Summary_Command;
          Keys  : Unbounded_String;
       begin
-         for Command in Summary_Command .. Help_Command loop
+         for Command in Named_Command loop
             if Name (Command) = To_String (Invocation.Target) then
                Topic := Command;
             end if;
          end loop;
-         Append (Result, Message ("help.command_usage", [Arg ("usage", Usage_Of (Topic))]) & LF & LF &
+         Append (Result, Message ("help.command_usage", [Arg ("usage", Usage (Topic))]) & LF & LF &
                    "  " & Message ("help.cmd." & Name (Topic)) & LF & LF & Message ("help.accepts") & LF);
          for Option in Option_Kind loop
             if Accepts (Topic, Option) then
@@ -114,27 +106,51 @@ package body Ada_Quality_Summary.CLI is
       end;
    end Help_Text;
 
-   function Render_Report (Invocation : Options.Options) return String is
+   function Render (Item : Reports.Report; Invocation : Options.Options) return String is
+     (case Invocation.Format is
+         when JSON_Format => JSON.Render (Item, Invocation.Pretty),
+         when SARIF_Format => SARIF.Render (Item, Invocation.Pretty),
+         when Terminal_Format =>
+            Terminal.Render
+              (Item,
+               (Width    => Terminal.Environment.Detect_Width (Invocation.Width),
+                Color    => Terminal.Environment.Use_Color (Invocation.Color),
+                Unicode  => Terminal.Environment.Unicode_Locale,
+                Layout   => Invocation.Layout,
+                Markdown => False)),
+         when Markdown_Format =>
+            Terminal.Render (Item, (Layout => Invocation.Layout, Markdown => True, others => <>)));
+
+   --  The --fail-on conditions that hold, as `regressions (2), violations (1)`, or empty when none holds.
+   function Gate_Failures (Item : Reports.Report; Invocation : Options.Options) return String is
+      Result : Unbounded_String;
+   begin
+      for Condition in Gate_Condition loop
+         if Invocation.Fail_On (Condition) and then Item.Gate (Condition) > 0 then
+            Append (Result, (if Length (Result) = 0 then "" else ", ") & Image (Condition) & " (" &
+                      Ada.Strings.Fixed.Trim (Natural'Image (Item.Gate (Condition)), Ada.Strings.Left) & ")");
+         end if;
+      end loop;
+      return To_String (Result);
+   end Gate_Failures;
+
+   function Render_Report (Invocation : Options.Options) return Outcome is
       Path  : constant String := Database_Path (Invocation);
       Store : Repository.Repository;
    begin
       Repository.Open (Store, Path);
       declare
-         Data : constant Repository.Snapshot := Repository.Load (Store);
-         Item : constant Reports.Report := Reports.Build (Data, Invocation, Path);
+         Data     : constant Repository.Snapshot := Repository.Load (Store);
+         Item     : constant Reports.Report := Reports.Build (Data, Invocation, Path);
+         Failures : constant String := Gate_Failures (Item, Invocation);
       begin
          Repository.Close (Store);
-         case Invocation.Format is
-            when JSON_Format =>
-               return JSON.Render (Item, Invocation.Pretty);
-            when Terminal_Format =>
-               return Terminal.Render
-                 (Item,
-                  (Width   => Terminal.Environment.Detect_Width (Invocation.Width),
-                   Color   => Terminal.Environment.Use_Color (Invocation.Color),
-                   Unicode => Terminal.Environment.Unicode_Locale,
-                   Layout  => Invocation.Layout));
-         end case;
+         --  A failing gate still writes the complete report; only the exit status and a diagnostic differ.
+         return (Exit_Code => (if Failures = "" then Success_Exit else Gate_Exit),
+                 Output    => To_Unbounded_String (Render (Item, Invocation)),
+                 Errors    => (if Failures = "" then Null_Unbounded_String
+                               else To_Unbounded_String
+                                 (Diagnostic (Message ("error.gate_failed", [Arg ("conditions", Failures)])))));
       end;
    end Render_Report;
 
@@ -142,13 +158,16 @@ package body Ada_Quality_Summary.CLI is
       Invocation : Options.Options;
    begin
       Invocation := Options.Parse (Arguments);
+      if Invocation.Command in Report_Command then
+         return Render_Report (Invocation);
+      end if;
       return
         (Exit_Code => Success_Exit,
          Output    => To_Unbounded_String
            (case Invocation.Command is
                when Help_Command => Help_Text (Invocation),
-               when Version_Command => Message ("help.version", [Arg ("version", Version)]) & LF,
-               when Report_Command => Render_Report (Invocation)),
+               when Completion_Command => Completion.Script (Invocation.Shell),
+               when others => Message ("help.version", [Arg ("version", Version)]) & LF),
          Errors    => Null_Unbounded_String);
    exception
       when Error : Argument_Error =>
@@ -177,12 +196,13 @@ package body Ada_Quality_Summary.CLI is
       declare
          Result : constant Outcome := Execute (Arguments);
       begin
-         if Length (Result.Errors) > 0 then
-            Ada.Text_IO.Put (Ada.Text_IO.Standard_Error, To_String (Result.Errors));
-         end if;
-         --  Retrieval, aggregation, and serialization are complete before the first byte is written.
+         --  Retrieval, aggregation, and serialization are complete before the first byte is written. A diagnostic
+         --  follows the report, so a failing quality gate is explained after the report it judged.
          if Length (Result.Output) > 0 then
             Write (Result.Output);
+         end if;
+         if Length (Result.Errors) > 0 then
+            Ada.Text_IO.Put (Ada.Text_IO.Standard_Error, To_String (Result.Errors));
          end if;
          return Result.Exit_Code;
       exception

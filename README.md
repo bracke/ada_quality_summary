@@ -2,7 +2,8 @@
 
 `ada-quality-summary` reports the persisted quality status of every project registered with
 [Ada Quality](https://github.com/bracke/ada_quality): a portfolio overview, project and indicator reports,
-outstanding findings, regressions, and historical trends, as terminal tables or versioned JSON.
+outstanding findings, review waivers, regressions, comparisons of chosen assessments, and historical trends, as
+terminal tables, Markdown, versioned JSON, or SARIF.
 
 It is strictly read-only. It reads one coherent snapshot through `Ada_Quality.Reporting`, never runs a measurement,
 and never creates, migrates, recovers, or modifies an assessment database.
@@ -31,16 +32,19 @@ The pins are for development only and are not part of a release. `tests/bin/aqs_
 ```text
 ada-quality-summary [OPTIONS] [COMMAND]
 
-  summary                 Overall quality overview (default)
-  projects                Project status table
-  project PROJECT         Detailed project assessment
-  indicators              Cross-project indicator summary
-  indicator ID            Detailed indicator report
-  problems                Outstanding quality findings
-  regressions             Quality regressions
-  trends                  Historical quality trends
-  history PROJECT         Individual project history
-  help [COMMAND]          Help and usage
+  summary                   Overall quality overview (default)
+  projects                  Project status table
+  project PROJECT           Detailed project assessment
+  indicators                Cross-project indicator summary
+  indicator ID              Detailed indicator report
+  problems                  Outstanding quality findings
+  waivers                   Review waivers in current assessments
+  regressions               Quality regressions
+  compare BASELINE CURRENT  Regressions between two chosen assessments (run IDs or aliases)
+  trends                    Historical quality trends
+  history PROJECT           Individual project history
+  help [COMMAND]            Help and usage
+  completion SHELL          Shell completion script for bash, zsh, or fish
 ```
 
 `PROJECT` is an exact project ID or an exact, case-sensitive directory basename. The database is the `--database`
@@ -52,7 +56,7 @@ Running without arguments prints the overview:
 ```text
 ADA QUALITY SUMMARY
 Database: .ada-quality.db
-Projects: 6 registered, 5 enabled
+Projects: 6 selected, 5 enabled
 
 QUALITY STATUS
   Passing          1
@@ -89,14 +93,15 @@ ASSESSMENT ACTIVITY
   Newer interrupted or invalid assessments: 1
 ```
 
-Every report is also available as JSON (`--format json`, optionally `--pretty`), validated by the schemas in
-[`schemas/`](schemas):
+Every report is also available as Markdown (`--format markdown`), for pull-request comments and CI job summaries, and
+the `problems` report as SARIF 2.1.0 (`--format sarif`) for code scanning. Every report is available as JSON
+(`--format json`, optionally `--pretty`), validated by the schemas in [`schemas/`](schemas):
 
 ```json
 {
   "schema_version": 1,
   "report_type": "projects",
-  "source": { "application": "ada_quality", "database_schema_version": 3, "snapshot": "fnv1a64:c3dee5528d63e5dd" },
+  "source": { "application": "ada_quality", "database_schema_version": 4, "snapshot": "fnv1a64:c3dee5528d63e5dd" },
   "selection": { "include_removed": false, "enabled_only": false, "project_id": null, "status": null,
                  "limit": 1, "selected_projects": 6 },
   "data": { "projects": [ { "project_id": 2, "name": "backup", "quality": "violations", "...": "..." } ],
@@ -109,11 +114,21 @@ Every report is also available as JSON (`--format json`, optionally `--pretty`),
 | Code | Meaning |
 | ---- | ------- |
 | 0 | Report generated, including reports that contain quality violations |
+| 1 | Report generated, and a condition requested with `--fail-on` holds |
 | 2 | Invalid command, option, filter, project, or indicator |
 | 3 | Reporting, serialization, unsupported-data, resource-limit, or output failure |
 | 4 | Database, schema, locking, or data-integrity failure |
 
-Code 1 is reserved for a future quality-gate command.
+`--fail-on regressions,violations,incomplete,unassessed` (any subset) turns a report into a CI gate: the report is
+written as usual, and the program exits 1 with a diagnostic when a listed condition holds:
+
+```sh
+ada-quality-summary regressions --format markdown --fail-on regressions >> "$GITHUB_STEP_SUMMARY"
+ada-quality-summary problems --format sarif > quality.sarif
+```
+
+`ada-quality-summary completion bash|zsh|fish` prints a shell completion script, and
+[`docs/ada-quality-summary.1`](docs/ada-quality-summary.1) is the manual page.
 
 ## Documentation
 

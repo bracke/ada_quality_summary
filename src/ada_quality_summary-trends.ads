@@ -22,6 +22,28 @@ package Ada_Quality_Summary.Trends is
    --  @param Baseline Baseline selection.
    --  @param Changes Regressions classified by Ada_Quality.History.Compare.
 
+   procedure Compare_Pair
+     (Data        : Ada_Quality_Summary.Repository.Snapshot;
+      Baseline_Id : Positive;
+      Current_Id  : Positive;
+      Pair        : out Ada_Quality_Summary.Model.Pair_Comparison;
+      Changes     : out Ada_Quality_Summary.Model.Regression_Summary_Vectors.Vector);
+   --  Compare two chosen assessments of one project through Ada_Quality.Reporting.Compare_Assessments.
+   --  @param Data Snapshot.
+   --  @param Baseline_Id Earlier assessment.
+   --  @param Current_Id Later assessment of the same project.
+   --  @param Pair Both runs and the compatibility decision.
+   --  @param Changes Regressions classified by Ada_Quality.History.Compare; empty unless the pair is comparable.
+   --  @exception Argument_Error The runs belong to different projects or Baseline_Id is not the earlier run.
+
+   function Run_Summary
+     (Data : Ada_Quality_Summary.Repository.Snapshot; Run_Id : Positive)
+      return Ada_Quality_Summary.Model.History_Summary;
+   --  Return the history row of one run, classified when completed.
+   --  @param Data Snapshot.
+   --  @param Run_Id Run.
+   --  @return Run row.
+
    function History
      (Data : Ada_Quality_Summary.Repository.Snapshot; Project_Id : Positive;
       Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound; Undated : out Natural)

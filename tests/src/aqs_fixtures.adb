@@ -66,6 +66,19 @@ package body Aqs_Fixtures is
       return (Kind => Boolean_Value, Boolean_Data => not Violated);
    end Measurement_For;
 
+   --  The finding Ada Quality records for a valid review waiver of Id, in its message format.
+   function Waiver_Of (Id : Indicator_Id) return Finding is
+      Path    : constant String := "src/large_unit.adb";
+      Message : constant String :=
+        Image (Id) & " target=" & (if Id = SRC_06 then "file" else "process_batch") &
+        " justification=one decoder owns the whole wire format";
+   begin
+      return (Indicator => Id, Rule => To_Unbounded_String ("review-waiver"), Level => Low,
+              Message => To_Unbounded_String (Message), Relative_Path => To_Unbounded_String (Path), Line => 0,
+              Fingerprint => To_Unbounded_String
+                (Ada_Quality.Finding_Identity.Create (Id, "review-waiver", Path, Message, Context => "waiver")));
+   end Waiver_Of;
+
    function Build (Project_Id : Positive; Shape : Plan) return Assessment is
       Result : Assessment;
    begin
@@ -96,6 +109,9 @@ package body Aqs_Fixtures is
                Item.Compliance := (if Shape.Violations (Id) then Violation else Pass);
                Item.Summary := To_Unbounded_String (if Shape.Violations (Id) then "violated" else "passes");
                Item.Measurement := Measurement_For (Id, Shape, Shape.Violations (Id));
+               if Shape.Waivers (Id) and then not Shape.Violations (Id) then
+                  Item.Findings.Append (Waiver_Of (Id));
+               end if;
                if Shape.Violations (Id) then
                   for Index in 1 .. Shape.Findings loop
                      declare
@@ -190,6 +206,14 @@ package body Aqs_Fixtures is
       Ada_Quality.Storage.Interrupt_Assessment (Store, Run_Id, "fixture interruption");
       Ada_Quality.Storage.Close (Store);
    end Interrupt;
+
+   procedure Alias (Database : String; Run_Id : Positive; Name : String) is
+      Store : Ada_Quality.Storage.Store;
+   begin
+      Ada_Quality.Storage.Open (Store, Database, Create_If_Missing => False);
+      Ada_Quality.Storage.Add_Assessment_Alias (Store, Run_Id, Name);
+      Ada_Quality.Storage.Close (Store);
+   end Alias;
 
    procedure Set_Enabled (Database : String; Project_Id : Positive; Enabled : Boolean) is
       Store : Ada_Quality.Storage.Store;

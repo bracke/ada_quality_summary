@@ -20,9 +20,13 @@ with Ada_Quality_Summary.Repository;
 --  | indicators  | Indicators                                                                                   |
 --  | indicator   | Indicator, Indicator_Rows                                                                    |
 --  | problems    | Findings and counts, Groups                                                                  |
+--  | waivers     | Findings (waiver findings only) and their counts, Groups                                     |
 --  | regressions | Regressions and counts, Baselines, Comparisons                                               |
+--  | compare     | Project, Pair, Regressions and counts                                                        |
 --  | trends      | Series, Excluded_Observations, Daily, Undated, Since, Until_Date                             |
 --  | history     | Project, History and lifecycle counts, Undated, Since, Until_Date, Comparisons               |
+--
+--  Every kind fills Gate.
 package Ada_Quality_Summary.Reports is
    --  Complete typed data of one report, built before any rendering.
    subtype UString is Ada_Quality_Summary.Model.UString;
@@ -73,6 +77,7 @@ package Ada_Quality_Summary.Reports is
       Projects_Affected : Natural := 0;
       Baselines         : Ada_Quality_Summary.Model.Baseline_Info_Vectors.Vector;
       Comparisons       : Natural := 0;
+      Pair              : Ada_Quality_Summary.Model.Pair_Comparison;
       History           : Ada_Quality_Summary.Model.History_Summary_Vectors.Vector;
       Completed_Count   : Natural := 0;
       Running_Count     : Natural := 0;
@@ -84,6 +89,7 @@ package Ada_Quality_Summary.Reports is
       Undated           : Natural := 0;
       Since             : Ada_Quality_Summary.Criteria.Date_Bound;
       Until_Date        : Ada_Quality_Summary.Criteria.Date_Bound;
+      Gate              : Ada_Quality_Summary.Criteria.Gate_Counts := [others => 0];
    end record;
    --  Report data; fields not used by a report kind keep their defaults.
    --  @field Metadata Provenance.
@@ -110,6 +116,7 @@ package Ada_Quality_Summary.Reports is
    --  @field Projects_Affected Projects with regressions.
    --  @field Baselines Baseline selection per project.
    --  @field Comparisons Baseline comparisons made while building the report; each project is compared at most once.
+   --  @field Pair The two assessments a compare report compares.
    --  @field History Runs (after limit).
    --  @field Completed_Count Completed runs.
    --  @field Running_Count Running runs.
@@ -121,6 +128,10 @@ package Ada_Quality_Summary.Reports is
    --  @field Undated Runs or observations without timestamps excluded by a date filter.
    --  @field Since First included UTC day.
    --  @field Until_Date Last included UTC day.
+   --  @field Gate How often each `--fail-on` condition holds: regressions of the compared projects (or of the
+   --  compared pair), and selected projects that have violations, are incomplete, or are unassessed (for compare, the
+   --  current assessment of the pair). Regressions are counted only when they were compared, which `--fail-on
+   --  regressions` requests.
 
    function Build
      (Data : Ada_Quality_Summary.Repository.Snapshot; Invocation : Ada_Quality_Summary.Options.Options;
@@ -130,5 +141,5 @@ package Ada_Quality_Summary.Reports is
    --  @param Invocation Validated report options.
    --  @param Database_Label Database path for terminal headings.
    --  @return Report.
-   --  @exception Argument_Error A PROJECT or indicator argument cannot be resolved.
+   --  @exception Argument_Error A PROJECT, indicator, or assessment argument cannot be resolved.
 end Ada_Quality_Summary.Reports;

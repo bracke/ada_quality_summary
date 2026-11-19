@@ -17,11 +17,13 @@ procedure Aqs_Demo is
 
    function Shape
      (Violations : String := ""; Unknowns : String := ""; NA : String := "PRF-01"; Policy : String := "policy-a";
-      Coverage : Long_Long_Integer := 9_500; Findings : Natural := 1; Level : Severity := Medium) return Plan is
+      Coverage : Long_Long_Integer := 9_500; Findings : Natural := 1; Level : Severity := Medium;
+      Waivers : String := "") return Plan is
      ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
        Findings => Findings, Fingerprint => Null_Unbounded_String, Level => Level, Coverage => Coverage,
        Source => To_Unbounded_String ("source-a"), Policy => To_Unbounded_String (Policy),
-       Toolchain => To_Unbounded_String ("toolchain-a"), Status => Assessment_Completed, Unknown_Run => Blocked));
+       Toolchain => To_Unbounded_String ("toolchain-a"), Status => Assessment_Completed, Unknown_Run => Blocked,
+       Waivers => Set_Of (Waivers)));
 begin
    if Ada.Command_Line.Argument_Count /= 1 then
       Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, "usage: aqs_demo DIRECTORY");
@@ -50,11 +52,12 @@ begin
       Ids (5) := Register (Database, Projects, "archive");
       Ids (6) := Register (Database, Projects, "legacy");
       Ids (7) := Register (Database, Projects, "messages");
-      Run := Publish (Database, Build (Ids (1), Shape));
+      Run := Publish (Database, Build (Ids (1), Shape (Waivers => "SRC-03")));
       Run := Publish (Database, Build (Ids (2), Shape (Coverage => 9_300)));
       Run := Publish (Database, Build (Ids (2), Shape ("TST-03 DOC-01", Coverage => 8_700, Findings => 2,
                                                        Level => High)));
-      Run := Publish (Database, Build (Ids (3), Shape ("SRC-01 SRC-04 DOC-01", "BLD-02 TST-04")));
+      Run := Publish (Database, Build (Ids (3), Shape ("SRC-01 SRC-04 DOC-01", "BLD-02 TST-04",
+                                                       Waivers => "SRC-03 SRC-06")));
       Run := Publish (Database, Build (Ids (4), Shape ("DOC-01")));
       Run := Publish (Database, Build (Ids (4), Shape ("DOC-01 REL-01", Policy => "policy-b")));
       Run := Start (Database, Ids (4));

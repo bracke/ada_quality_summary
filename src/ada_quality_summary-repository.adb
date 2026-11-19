@@ -1,6 +1,7 @@
 with Ada.Calendar;
 with Ada.Exceptions;
 with Ada.Unchecked_Deallocation;
+with Ada_Quality_Summary.Text;
 
 package body Ada_Quality_Summary.Repository is
    use Ada.Strings.Unbounded;
@@ -175,6 +176,25 @@ package body Ada_Quality_Summary.Repository is
       when Error : Ada_Quality.Reporting.Integrity_Error | Ada_Quality.Reporting.Reporting_Error =>
          raise Data_Error with Ada.Exceptions.Exception_Message (Error);
    end Compare;
+
+   function Resolve_Run (Data : Snapshot; Reference : String) return Positive is
+   begin
+      return Ada_Quality.Reporting.Resolve_Assessment (Data.Session, Reference);
+   exception
+      when Ada_Quality.Reporting.Reporting_Error =>
+         raise Argument_Error with
+           Ada_Quality_Summary.Text.Message ("error.unknown_assessment", [Ada_Quality_Summary.Text.Arg
+                                                                            ("reference", Reference)]);
+   end Resolve_Run;
+
+   function Compare_Runs
+     (Data : Snapshot; Baseline_Id, Current_Id : Positive) return Ada_Quality.Reporting.Project_Comparison is
+   begin
+      return Ada_Quality.Reporting.Compare_Assessments (Data.Session, Baseline_Id, Current_Id);
+   exception
+      when Error : Ada_Quality.Reporting.Integrity_Error | Ada_Quality.Reporting.Reporting_Error =>
+         raise Data_Error with Ada.Exceptions.Exception_Message (Error);
+   end Compare_Runs;
 
    function Result_Of
      (Data : Snapshot; Run_Id : Positive; Indicator : Ada_Quality.Types.Indicator_Id)

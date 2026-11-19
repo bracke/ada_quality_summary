@@ -1,5 +1,6 @@
 with Ada_Quality_Summary.Limits;
 with Ada_Quality_Summary.Reports;
+with Jsonlib.Documents;
 
 --  Versioned JSON serialization of report data; no aggregation, database access, or terminal formatting.
 package Ada_Quality_Summary.JSON is
@@ -13,6 +14,15 @@ package Ada_Quality_Summary.JSON is
       Maximum_Bytes : Positive := Default_Maximum_Bytes) return String;
    --  Serialize a complete report envelope.
    --  @param Item Report data.
+   --  @param Pretty Whether to indent.
+   --  @param Maximum_Bytes Size limit.
+   --  @return UTF-8 JSON text ending with a line feed.
+   --  @exception Report_Error The document exceeds Maximum_Bytes.
+
+   function Serialize
+     (Doc : Jsonlib.Documents.Document; Pretty : Boolean; Maximum_Bytes : Positive) return String;
+   --  Serialize a complete document, the last step of every JSON-based format.
+   --  @param Doc Document with its root set.
    --  @param Pretty Whether to indent.
    --  @param Maximum_Bytes Size limit.
    --  @return UTF-8 JSON text ending with a line feed.

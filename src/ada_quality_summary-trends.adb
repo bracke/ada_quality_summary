@@ -7,6 +7,7 @@ with Ada_Quality.Indicators;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
 with Ada_Quality_Summary.Rules.Counting;
+with Ada_Quality_Summary.Text;
 
 package body Ada_Quality_Summary.Trends is
    use Ada.Strings.Unbounded;
@@ -26,6 +27,17 @@ package body Ada_Quality_Summary.Trends is
          when Ada_Quality.History.Missing_Source_Fingerprint => Missing_Source_Fingerprint,
          when Ada_Quality.History.Policy_Changed => Policy_Changed,
          when others => Toolchain_Changed);
+
+   --  The history item Ada_Quality.History compares for one run.
+   function Item_Of (Data : Repository.Snapshot; Run : History_Summary) return Ada_Quality.Storage.History_Item is
+   begin
+      for Item of Repository.History_Items (Data, Run.Project_Id) loop
+         if Item.Id = Run.Run_Id then
+            return Item;
+         end if;
+      end loop;
+      raise Data_Error with "assessment" & Positive'Image (Run.Run_Id) & " is absent from its project history";
+   end Item_Of;
 
    function Completed_Only (Items : Ada_Quality.Storage.History_Vectors.Vector)
       return Ada_Quality.Storage.History_Vectors.Vector
@@ -99,6 +111,60 @@ package body Ada_Quality_Summary.Trends is
       end;
    end Regressions;
 
+   function Run_Summary (Data : Repository.Snapshot; Run_Id : Positive) return History_Summary is
+      Run    : constant Ada_Quality.Reporting.Run_Record := Repository.Run (Data, Run_Id);
+      Result : History_Summary :=
+        (Project_Id => Run.Project_Id, Run_Id => Run.Id, State => Run.State, Source_Id => Run.Source_Id,
+         Policy_Id => Run.Policy_Id, Toolchain_Id => Run.Toolchain_Id, Started_At => Run.Started_At,
+         Finished_At => Run.Finished_At, Has_Quality => False, Quality => Unassessed);
+   begin
+      if Run.State = Assessment_Completed then
+         Result.Has_Quality := True;
+         Result.Quality := Repository.Facts (Data, Run.Id).Quality;
+      end if;
+      return Result;
+   end Run_Summary;
+
+   procedure Compare_Pair
+     (Data        : Repository.Snapshot;
+      Baseline_Id : Positive;
+      Current_Id  : Positive;
+      Pair        : out Pair_Comparison;
+      Changes     : out Regression_Summary_Vectors.Vector)
+   is
+      Baseline : constant History_Summary := Run_Summary (Data, Baseline_Id);
+      Current  : constant History_Summary := Run_Summary (Data, Current_Id);
+   begin
+      if Baseline.Project_Id /= Current.Project_Id then
+         raise Argument_Error with Ada_Quality_Summary.Text.Message ("error.compare_projects");
+      elsif Baseline_Id >= Current_Id then
+         raise Argument_Error with Ada_Quality_Summary.Text.Message ("error.compare_order");
+      end if;
+      Pair := (Project_Id => Current.Project_Id, Baseline => Baseline, Current => Current, others => <>);
+      Changes.Clear;
+      declare
+         Outcome : constant Ada_Quality.Reporting.Project_Comparison :=
+           Repository.Compare_Runs (Data, Baseline_Id, Current_Id);
+      begin
+         Pair.Comparison := Outcome.Selection.Status;
+         Pair.Policy_Changed := Outcome.Selection.Policy_Changed;
+         if Baseline.State = Assessment_Completed and then Current.State = Assessment_Completed and then
+           Pair.Comparison /= Ada_Quality.History.Comparison_Available
+         then
+            --  Explain the incompatibility of two completed runs with the rule Ada Quality applied.
+            Pair.Has_Reason := True;
+            Pair.Reason := Reason_Of (Ada_Quality.History.Incompatibility_Of
+                                        (Item_Of (Data, Baseline), Item_Of (Data, Current)));
+         end if;
+         for Change of Outcome.Changes loop
+            Changes.Append
+              (Regression_Summary'
+                 (Project_Id => Current.Project_Id, Current_Run_Id => Current_Id, Baseline_Run_Id => Baseline_Id,
+                  Kind => Change.Kind, Indicator => Change.Indicator, Before => Change.Before, After => Change.After));
+         end loop;
+      end;
+   end Compare_Pair;
+
    function In_Range
      (Stamp : Ada_Quality.Reporting.Optional_Timestamp; Since, Until_Date : Date_Bound) return Boolean is
      ((not Since.Present and then not Until_Date.Present) or else
@@ -121,18 +187,7 @@ package body Ada_Quality_Summary.Trends is
          if Filtered (Since, Until_Date) and then not Placed (Run).Present then
             Undated := Undated + 1;
          elsif In_Range (Placed (Run), Since, Until_Date) then
-            declare
-               Item : History_Summary :=
-                 (Project_Id => Project_Id, Run_Id => Run.Id, State => Run.State, Source_Id => Run.Source_Id,
-                  Policy_Id => Run.Policy_Id, Toolchain_Id => Run.Toolchain_Id, Started_At => Run.Started_At,
-                  Finished_At => Run.Finished_At, Has_Quality => False, Quality => Unassessed);
-            begin
-               if Run.State = Assessment_Completed then
-                  Item.Has_Quality := True;
-                  Item.Quality := Repository.Facts (Data, Run.Id).Quality;
-               end if;
-               Result.Append (Item);
-            end;
+            Result.Append (Run_Summary (Data, Run.Id));
          end if;
       end loop;
       return Result;

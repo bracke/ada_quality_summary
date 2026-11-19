@@ -20,6 +20,7 @@ package body Ada_Quality_Summary.Terminal is
    use Ada_Quality_Summary.Reports;
    use Ada_Quality_Summary.Terminal.Cells;
    use Ada_Quality_Summary.Terminal.Output;
+   use type Ada_Quality.History.Comparison_Status;
    use type Ada_Quality.Reporting.Evidence_Format;
 
    ------------------------------------------------------------------------------------------------------------------
@@ -111,7 +112,7 @@ package body Ada_Quality_Summary.Terminal is
       for P of Item.Portfolio.Projects loop
          Result.Include (P.Project_Id, P.Name);
       end loop;
-      if Item.Metadata.Kind in Model.Project_Report | Model.History_Report then
+      if Item.Metadata.Kind in Model.Project_Report | Model.History_Report | Model.Compare_Report then
          Result.Include (Item.Project.Project_Id, Item.Project.Name);
       end if;
       return Result;
@@ -254,6 +255,11 @@ package body Ada_Quality_Summary.Terminal is
                 Ada_Quality_Summary.Text.Arg ("unassessed", Long_Long_Integer (Item.Portfolio.Totals.Unassessed))]));
    end Projects_Report;
 
+   function Location_Of (F : Finding_Summary) return String is
+     (if Length (F.Path) = 0 then "-"
+      elsif F.Line = 0 then To_String (F.Path)
+      else To_String (F.Path) & ":" & Num (F.Line));
+
    procedure Finding_Table (Out_Text : in out Writer; Findings : Finding_Summary_Vectors.Vector;
                             Names : Name_Maps.Map; With_Project : Boolean) is
       Columns : Column_Vectors.Vector;
@@ -273,9 +279,7 @@ package body Ada_Quality_Summary.Terminal is
             Row.Append (C (Severity_Label (F.Level), (if F.Level >= High then Bad_Role else Warn_Role)));
             Row.Append (C (Image (F.Indicator)));
             Row.Append (C (Name_Of (Names, F.Project_Id)));
-            Row.Append (C (if Length (F.Path) = 0 then "-"
-                          elsif F.Line = 0 then To_String (F.Path)
-                          else To_String (F.Path) & ":" & Num (F.Line)));
+            Row.Append (C (Location_Of (F)));
             Row.Append (C (To_String (F.Rule)));
             Row.Append (C (To_String (F.Message)));
             Rows.Append (Row);
@@ -554,6 +558,82 @@ package body Ada_Quality_Summary.Terminal is
       Shown_Note (Out_Text, Natural (Item.Findings.Length), Item.Finding_Total);
    end Problems_Report;
 
+   procedure Waivers_Report (Out_Text : in out Writer; Item : Report) is
+      Names   : constant Name_Maps.Map := Names_Of (Item);
+      Columns : Column_Vectors.Vector;
+      Rows    : Row_Vectors.Vector;
+   begin
+      Header (Out_Text, Item, L ("waivers"));
+      Blank (Out_Text);
+      Note (Out_Text, L ("waiver_total", Num (Item.Finding_Total)));
+      Note (Out_Text, L ("projects_with_waivers", Num (Item.Finding_Projects)));
+      Blank (Out_Text);
+      Columns.Append (Col (L ("project"), Shrink => True, Minimum => 8));
+      Columns.Append (Col (L ("indicator")));
+      Columns.Append (Col (L ("target"), Shrink => True, Minimum => 8));
+      Columns.Append (Col (L ("justification"), Shrink => True, Priority => 2, Minimum => 10));
+      Columns.Append (Col (L ("location"), Shrink => True, Priority => 3, Minimum => 8));
+      Columns.Append (Col (L ("run"), Right => True, Priority => 3));
+      for F of Item.Findings loop
+         declare
+            Row     : Cell_Vectors.Vector;
+            Message : constant String := To_String (F.Message);
+         begin
+            Row.Append (C (Name_Of (Names, F.Project_Id)));
+            Row.Append (C (Image (F.Indicator)));
+            Row.Append (C (Waiver_Target (Message)));
+            Row.Append (C (Waiver_Justification (Message)));
+            Row.Append (C (Location_Of (F)));
+            Row.Append (C (Num (F.Run_Id)));
+            Rows.Append (Row);
+         end;
+      end loop;
+      if Rows.Is_Empty then
+         Note (Out_Text, L ("no_waivers"));
+      else
+         Table (Out_Text, Columns, Rows);
+      end if;
+      Shown_Note (Out_Text, Natural (Item.Findings.Length), Item.Finding_Total);
+   end Waivers_Report;
+
+   function Pair_Run_Text (Run : History_Summary) return String is
+     (Ada_Quality_Summary.Text.Message
+        ("label.pair_run",
+         [Ada_Quality_Summary.Text.Arg ("run", Long_Long_Integer (Run.Run_Id)),
+          Ada_Quality_Summary.Text.Arg
+            ("state", (if Run.Has_Quality then Quality_Label (Run.Quality) else Run_State_Label (Run.State))),
+          Ada_Quality_Summary.Text.Arg ("finished", Time_Text (Run.Finished_At))]));
+
+   procedure Compare_Report (Out_Text : in out Writer; Item : Report) is
+      Pair  : constant Pair_Comparison := Item.Pair;
+      Width : constant Natural := 14;
+      Ready : constant Boolean := Pair.Comparison = Ada_Quality.History.Comparison_Available;
+   begin
+      Heading (Out_Text, L ("compare_title", To_String (Item.Project.Name)));
+      Note (Out_Text, L ("database", To_String (Item.Database_Label)), Indent => 0);
+      Blank (Out_Text);
+      Field (Out_Text, L ("path"), To_String (Item.Project.Project_Path), Width);
+      Field (Out_Text, L ("baseline_run"), Pair_Run_Text (Pair.Baseline), Width,
+             (if Pair.Baseline.Has_Quality then Quality_Role (Pair.Baseline.Quality) else Warn_Role));
+      Field (Out_Text, L ("current_run"), Pair_Run_Text (Pair.Current), Width,
+             (if Pair.Current.Has_Quality then Quality_Role (Pair.Current.Quality) else Warn_Role));
+      Field (Out_Text, L ("comparison"), L ("comparison." & Image (Pair.Comparison)), Width,
+             (if Ready then Good_Role else Warn_Role));
+      if Pair.Has_Reason then
+         Field (Out_Text, L ("incompatibility"), L ("reason." & Image (Pair.Reason)), Width, Warn_Role);
+      end if;
+      if Pair.Policy_Changed then
+         Note (Out_Text, L ("pair.policy_changed"));
+      end if;
+      if Ready then
+         Blank (Out_Text);
+         Heading (Out_Text, L ("regressions_heading"));
+         Note (Out_Text, L ("regression_count", Num (Item.Regression_Total)));
+         Regression_Table (Out_Text, Item.Regressions, Names_Of (Item));
+         Shown_Note (Out_Text, Natural (Item.Regressions.Length), Item.Regression_Total);
+      end if;
+   end Compare_Report;
+
    procedure Regressions_Report (Out_Text : in out Writer; Item : Report) is
    begin
       Header (Out_Text, Item, L ("regressions_heading"));
@@ -709,7 +789,7 @@ package body Ada_Quality_Summary.Terminal is
    end History_Report;
 
    function Render (Item : Report; Style : Settings) return String is
-      Out_Text : Writer := (Text => Null_Unbounded_String, Style => Style);
+      Out_Text : Writer := (Text => Null_Unbounded_String, Style => Style, others => <>);
    begin
       Out_Text.Style.Width := Environment.Clamp (Style.Width);
       case Item.Metadata.Kind is
@@ -719,7 +799,9 @@ package body Ada_Quality_Summary.Terminal is
          when Model.Indicators_Report => Indicators_Report (Out_Text, Item);
          when Model.Indicator_Report => Indicator_Report (Out_Text, Item);
          when Model.Problems_Report => Problems_Report (Out_Text, Item);
+         when Model.Waivers_Report => Waivers_Report (Out_Text, Item);
          when Model.Regressions_Report => Regressions_Report (Out_Text, Item);
+         when Model.Compare_Report => Compare_Report (Out_Text, Item);
          when Model.Trends_Report => Trends_Report (Out_Text, Item);
          when Model.History_Report => History_Report (Out_Text, Item);
       end case;

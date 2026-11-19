@@ -740,6 +740,26 @@
       ],
       "additionalProperties": false
     },
+    "comparison_status": {
+      "type": "string",
+      "enum": [
+        "comparison_available",
+        "no_assessments",
+        "no_baseline",
+        "current_incomplete",
+        "no_completed_baseline",
+        "toolchain_changed",
+        "no_compatible_baseline"
+      ]
+    },
+    "incompatibility": {
+      "type": "string",
+      "enum": [
+        "missing_source_fingerprint",
+        "policy_changed",
+        "toolchain_changed"
+      ]
+    },
     "baseline": {
       "type": "object",
       "properties": {
@@ -762,16 +782,7 @@
           "$ref": "#/$defs/optional_id"
         },
         "comparison": {
-          "type": "string",
-          "enum": [
-            "comparison_available",
-            "no_assessments",
-            "no_baseline",
-            "current_incomplete",
-            "no_completed_baseline",
-            "toolchain_changed",
-            "no_compatible_baseline"
-          ]
+          "$ref": "#/$defs/comparison_status"
         },
         "policy_changed": {
           "type": "boolean"
@@ -786,12 +797,7 @@
                 "minimum": 1
               },
               "reason": {
-                "type": "string",
-                "enum": [
-                  "missing_source_fingerprint",
-                  "policy_changed",
-                  "toolchain_changed"
-                ]
+                "$ref": "#/$defs/incompatibility"
               }
             },
             "required": [

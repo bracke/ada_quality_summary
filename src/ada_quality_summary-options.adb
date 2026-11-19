@@ -16,11 +16,24 @@ package body Ada_Quality_Summary.Options is
          when Indicators_Command => "indicators",
          when Indicator_Command => "indicator",
          when Problems_Command => "problems",
+         when Waivers_Command => "waivers",
          when Regressions_Command => "regressions",
+         when Compare_Command => "compare",
          when Trends_Command => "trends",
          when History_Command => "history",
          when Help_Command => "help",
+         when Completion_Command => "completion",
          when Version_Command => "version");
+
+   function Usage (Command : Command_Kind) return String is
+     (case Command is
+         when Project_Command => "project PROJECT",
+         when Indicator_Command => "indicator ID",
+         when History_Command => "history PROJECT",
+         when Compare_Command => "compare BASELINE CURRENT",
+         when Help_Command => "help [COMMAND]",
+         when Completion_Command => "completion SHELL",
+         when others => Name (Command));
 
    function Report_Of (Command : Report_Command) return Ada_Quality_Summary.Model.Report_Kind is
      (case Command is
@@ -30,17 +43,18 @@ package body Ada_Quality_Summary.Options is
          when Indicators_Command => Ada_Quality_Summary.Model.Indicators_Report,
          when Indicator_Command => Ada_Quality_Summary.Model.Indicator_Report,
          when Problems_Command => Ada_Quality_Summary.Model.Problems_Report,
+         when Waivers_Command => Ada_Quality_Summary.Model.Waivers_Report,
          when Regressions_Command => Ada_Quality_Summary.Model.Regressions_Report,
+         when Compare_Command => Ada_Quality_Summary.Model.Compare_Report,
          when Trends_Command => Ada_Quality_Summary.Model.Trends_Report,
          when History_Command => Ada_Quality_Summary.Model.History_Report);
 
    function Is_Collection (Command : Command_Kind) return Boolean is
      (Command in Summary_Command | Projects_Command | Indicators_Command | Indicator_Command | Problems_Command |
-                 Regressions_Command | Trends_Command);
+                 Waivers_Command | Regressions_Command | Trends_Command);
 
    function Is_Historical (Command : Command_Kind) return Boolean is
      (Command in Trends_Command | History_Command);
-
 
    type Text_Access is access constant String;
 
@@ -51,7 +65,7 @@ package body Ada_Quality_Summary.Options is
 
    Option_Texts : constant array (Option_Kind) of Option_Text :=
      [Database_Option        => (new String'("--database"), new String'("PATH")),
-      Format_Option          => (new String'("--format"), new String'("terminal|json")),
+      Format_Option          => (new String'("--format"), new String'("terminal|json|markdown|sarif")),
       Color_Option           => (new String'("--color"), new String'("auto|always|never")),
       No_Color_Option        => (new String'("--no-color"), new String'("")),
       Layout_Option          => (new String'("--layout"), new String'("compact|normal|detailed")),
@@ -66,12 +80,16 @@ package body Ada_Quality_Summary.Options is
       Since_Option           => (new String'("--since"), new String'("DATE")),
       Until_Option           => (new String'("--until"), new String'("DATE")),
       Pretty_Option          => (new String'("--pretty"), new String'("")),
+      Fail_On_Option         => (new String'("--fail-on"), new String'("CONDITIONS")),
       Help_Option            => (new String'("--help"), new String'("")),
       Version_Option         => (new String'("--version"), new String'(""))];
 
    function Spelling (Option : Option_Kind) return String is (Option_Texts (Option).Spelling.all);
 
    function Value_Name (Option : Option_Kind) return String is (Option_Texts (Option).Value.all);
+
+   function Usage (Option : Option_Kind) return String is
+     (if Value_Name (Option) = "" then Spelling (Option) else Spelling (Option) & " " & Value_Name (Option));
 
    function Help_Key (Option : Option_Kind) return String is
       Text : constant String := Spelling (Option);
@@ -89,6 +107,7 @@ package body Ada_Quality_Summary.Options is
      (case Option is
          when Project_Option | Status_Option => Is_Collection (Command),
          when Since_Option | Until_Option => Is_Historical (Command),
+         when Fail_On_Option => Command in Report_Command,
          when Sort_Option => (for some Key in Sort_Name .. Sort_Key'Last => Allowed (Command, Key)),
          when others => True);
 
@@ -111,13 +130,17 @@ package body Ada_Quality_Summary.Options is
             return Key in Sort_Name | Sort_Id | Sort_State;
          when Problems_Command =>
             return Key in Sort_Severity | Sort_Indicator | Sort_Project;
+         when Waivers_Command =>
+            return Key in Sort_Indicator | Sort_Project;
          when Regressions_Command =>
             return Key in Sort_Project | Sort_Indicator | Sort_Kind;
+         when Compare_Command =>
+            return Key in Sort_Indicator | Sort_Kind;
          when Trends_Command =>
             return Key in Sort_Run | Sort_Project;
          when History_Command =>
             return Key = Sort_Run;
-         when Help_Command | Version_Command =>
+         when Help_Command | Completion_Command | Version_Command =>
             return False;
       end case;
    end Allowed;
@@ -199,17 +222,35 @@ package body Ada_Quality_Summary.Options is
       Fail ("error.invalid_choice", [Arg ("option", Option), Arg ("value", Value), Arg ("choices", Names.all)]);
    end Parse_Choice;
 
-   Format_Names : aliased constant String := "terminal, json";
+   Format_Names : aliased constant String := "terminal, json, markdown, sarif";
    Color_Names  : aliased constant String := "auto, always, never";
    Layout_Names : aliased constant String := "compact, normal, detailed";
+   Shell_Names  : aliased constant String := "bash, zsh, fish";
+   Gate_Names   : aliased constant String := "regressions, violations, incomplete, unassessed";
 
    function Parse_Format is new Parse_Choice (Output_Format, Format_Names'Access);
    function Parse_Color is new Parse_Choice (Color_Mode, Color_Names'Access);
    function Parse_Layout is new Parse_Choice (Layout_Mode, Layout_Names'Access);
+   function Parse_Shell is new Parse_Choice (Shell_Kind, Shell_Names'Access);
+   function Parse_Gate is new Parse_Choice (Gate_Condition, Gate_Names'Access);
+
+   --  Parse a comma-separated list of `--fail-on` conditions; naming a condition twice is harmless.
+   function Parse_Gates (Option, Value : String) return Gate_Set is
+      Result : Gate_Set := No_Gate;
+      Start  : Positive := Value'First;
+   begin
+      for Index in Value'First .. Value'Last + 1 loop
+         if Index > Value'Last or else Value (Index) = ',' then
+            Result (Parse_Gate (Option, Value (Start .. Index - 1))) := True;
+            Start := Index + 1;
+         end if;
+      end loop;
+      return Result;
+   end Parse_Gates;
 
    function Parse_Command (Text : String; Command : out Command_Kind) return Boolean is
    begin
-      for Candidate in Summary_Command .. Help_Command loop
+      for Candidate in Named_Command loop
          if Name (Candidate) = Text then
             Command := Candidate;
             return True;
@@ -244,7 +285,7 @@ package body Ada_Quality_Summary.Options is
       Has_Command  : Boolean := False;
       Help_Flag    : Boolean := False;
       Version_Flag : Boolean := False;
-      Has_Format, Has_Width, Has_Sort, Has_Limit, Has_Since, Has_Until : Boolean := False;
+      Has_Format, Has_Width, Has_Sort, Has_Limit, Has_Since, Has_Until, Has_Fail_On : Boolean := False;
       Seen_Flags   : array (1 .. 4) of Boolean := [others => False];
       Index        : Positive := 1;
 
@@ -372,6 +413,9 @@ package body Ada_Quality_Summary.Options is
             elsif Option = Spelling (Until_Option) then
                Once (Has_Until, Option);
                Result.Until_Date := (Present => True, Value => Parse_Date (Value));
+            elsif Option = Spelling (Fail_On_Option) then
+               Once (Has_Fail_On, Option);
+               Result.Fail_On := Parse_Gates (Option, Value);
             else
                return False;
             end if;
@@ -391,10 +435,17 @@ package body Ada_Quality_Summary.Options is
             end if;
             Has_Command := True;
          elsif not Result.Has_Target and then
-           Result.Command in Project_Command | Indicator_Command | History_Command | Help_Command
+           Result.Command in Project_Command | Indicator_Command | History_Command | Help_Command |
+                             Compare_Command | Completion_Command
          then
             Result.Target := To_Unbounded_String (Item);
             Result.Has_Target := True;
+            if Result.Command = Completion_Command then
+               Result.Shell := Parse_Shell (Name (Completion_Command), Item);
+            end if;
+         elsif not Result.Has_Second and then Result.Command = Compare_Command then
+            Result.Second := To_Unbounded_String (Item);
+            Result.Has_Second := True;
          else
             Fail ("error.unexpected_argument", [Arg ("argument", Item)]);
          end if;
@@ -407,6 +458,10 @@ package body Ada_Quality_Summary.Options is
             Fail ("error.missing_project", [Arg ("command", Name (Result.Command))]);
          elsif Result.Command = Indicator_Command and then not Result.Has_Target then
             Fail ("error.missing_indicator");
+         elsif Result.Command = Compare_Command and then not Result.Has_Second then
+            Fail ("error.missing_assessments");
+         elsif Result.Command = Completion_Command and then not Result.Has_Target then
+            Fail ("error.missing_shell");
          end if;
       end Check_Target;
 
@@ -418,6 +473,9 @@ package body Ada_Quality_Summary.Options is
          elsif Result.Has_Status and then not Accepts (Result.Command, Status_Option) then
             Fail ("error.option_not_allowed",
                   [Arg ("option", Spelling (Status_Option)), Arg ("command", Name (Result.Command))]);
+         elsif Has_Fail_On and then not Accepts (Result.Command, Fail_On_Option) then
+            Fail ("error.option_not_allowed",
+                  [Arg ("option", Spelling (Fail_On_Option)), Arg ("command", Name (Result.Command))]);
          end if;
       end Check_Scope;
 
@@ -439,11 +497,16 @@ package body Ada_Quality_Summary.Options is
       procedure Check_Presentation is
          Command : constant String := Name (Result.Command);
       begin
-         if Result.Format = JSON_Format and then (Result.Has_Layout or else Has_Width) then
-            Fail ("error.terminal_only",
-                  [Arg ("option", Spelling (if Result.Has_Layout then Layout_Option else Width_Option))]);
-         elsif Result.Format = Terminal_Format and then Result.Pretty then
+         if Result.Format /= Terminal_Format and then Has_Width then
+            Fail ("error.terminal_only", [Arg ("option", Spelling (Width_Option))]);
+         elsif Result.Format in JSON_Format | SARIF_Format and then Result.Has_Layout then
+            Fail ("error.text_only", [Arg ("option", Spelling (Layout_Option))]);
+         elsif Result.Format in Terminal_Format | Markdown_Format and then Result.Pretty then
             Fail ("error.json_only", [Arg ("option", Spelling (Pretty_Option))]);
+         elsif Result.Format = SARIF_Format and then Result.Command in Report_Command and then
+           Result.Command /= Problems_Command
+         then
+            Fail ("error.sarif_command", [Arg ("command", Command)]);
          elsif not Allowed (Result.Command, Result.Sort) then
             Fail ("error.sort_not_allowed", [Arg ("value", Image (Result.Sort)), Arg ("command", Command)]);
          elsif Result.Reverse_Order and then Result.Command = Help_Command then

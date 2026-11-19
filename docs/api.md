@@ -13,6 +13,9 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | `Runs (Item, Project_Id)` | Run metadata in every lifecycle state, ascending ID order, with optional UTC timestamps and evidence format. |
 | `Read_Assessment (Item, Run_Id)` | Fully decoded completed assessment with 33 results in registry order. |
 | `Supported_Schema_Version`, `Snapshot_Identity` | Provenance. |
+| `Resolve_Assessment (Item, Reference)` | Run identity of a decimal run ID or an assessment alias. |
+| `Compare_Project (Item, Project_Id[, Current_Id])` | Baseline selection and regressions for the current assessment, or for a chosen one. |
+| `Compare_Assessments (Item, Baseline_Id, Current_Id)` | Compatibility decision and regressions for exactly two chosen assessments. |
 | `History_Items`, `Read_History_Evidence`, `All_Measurements` | Opaque rows for `Ada_Quality.History`. |
 | `Optional_Timestamp`, `Image` | Persisted instant, absent for legacy runs. |
 | `Load_Limits` | Project, run, and finding row limits. |
@@ -25,20 +28,22 @@ Every public declaration carries GNATdoc comments; this page summarizes the unit
 | ---- | ----------------- |
 | `Ada_Quality_Summary` | `Version`, `Report_Format_Version`, `Argument_Error`, `Report_Error`, `Data_Error`. |
 | `.Limits` | `Maximum_Projects`, `Maximum_Runs`, `Maximum_Findings`, `Maximum_Width`, `Maximum_Field_Width`, `Maximum_JSON_Bytes`, `Default_Load`. |
-| `.Criteria` | `Sort_Key`, `Image`, `Date_Bound`, `Day_Start`, `Day_Image`, `Within`. |
-| `.Options` | `Options`, `Command_Kind`, `Option_Kind`, `Spelling`, `Value_Name`, `Help_Key`, `Accepts`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`, `Name`, `Report_Of`. |
+| `.Criteria` | `Sort_Key`, `Image`, `Date_Bound`, `Day_Start`, `Day_Image`, `Within`, `Gate_Condition`, `Gate_Set`, `Gate_Counts`. |
+| `.Options` | `Options`, `Command_Kind`, `Named_Command`, `Option_Kind`, `Output_Format`, `Shell_Kind`, `Spelling`, `Value_Name`, `Usage`, `Help_Key`, `Accepts`, `Parse`, `Parse_Date`, `Allowed`, `Is_Collection`, `Is_Historical`, `Name`, `Report_Of`. |
 | `.Rules` | `Quality_State`, `Newer_State`, `Result_State`, `Indicator_Totals`, `Portfolio_Totals`. |
 | `.Rules.Counting` | `Total`, `Applicable`, `Sum`, `Tally`, `Classify`, `Priority`, `Classified`, `Consistent`, `Add_Classified`, `Add_Project` (SPARK, proved). |
-| `.Model` | `Project_Quality_State`, `Indicator_State`, `State_Of`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Indicator_Row`, `Finding_Summary`, `Summary_Of`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Baseline_Info`, `State_Snapshot`, `Report_Kind`, `Report_Metadata`, `Basename`, `Classify`, `Count_Indicators`, `Quality_Priority`, images. |
-| `.Repository` | `Repository`, `Snapshot`, `Open`, `Load`, indexed queries, `Assessment`, `Result_Of`, `Run_Facts`, `Facts`. |
+| `.Model` | `Project_Quality_State`, `Indicator_State`, `State_Of`, `Indicator_Totals`, `Project_Summary`, `Portfolio_Totals`, `Portfolio_Summary`, `Indicator_Summary`, `Indicator_Row`, `Finding_Summary`, `Summary_Of`, `Regression_Summary`, `History_Summary`, `Trend_Summary`, `Baseline_Info`, `Pair_Comparison`, `State_Snapshot`, `Waiver_Rule`, `Is_Waiver`, `Waiver_Target`, `Waiver_Justification`, `Report_Kind`, `Report_Metadata`, `Basename`, `Classify`, `Count_Indicators`, `Quality_Priority`, images. |
+| `.Repository` | `Repository`, `Snapshot`, `Open`, `Load`, indexed queries, `Assessment`, `Result_Of`, `Run_Facts`, `Facts`, `Resolve_Run`, `Compare`, `Compare_Runs`. |
 | `.Filtering` | `Selection`, `Parse_Project_Id`, `Resolve_Project`, `Resolve_Indicator`, `Population`, sorting procedures, `Limit`. |
 | `.Aggregation` | `Build_Project`, `Build_Projects`, `Build_Totals`, `Build_Portfolio`, `Build_Indicator`, `Build_Indicators`, `Build_Findings`, `Findings_Of`, `State_Of`. |
-| `.Trends` | `Regressions`, `History`, `Metric_Series`, `Undated_Runs`, `Daily_States`. |
+| `.Trends` | `Regressions`, `Compare_Pair`, `Run_Summary`, `History`, `Metric_Series`, `Undated_Runs`, `Daily_States`. |
 | `.Reports` | `Report`, `Build`; the report-kind table in the specification lists the fields each kind fills. |
-| `.Terminal` | `Settings`, `Render`. |
+| `.Terminal` | `Settings` (including the Markdown mode), `Render`. |
 | `.Terminal.Environment` | `Stdout_Is_Terminal`, `Clamp`, `Detect_Width`, `Use_Color`, `Unicode_Locale`. |
 | `.Terminal.Cells` | `Display_Width`, `Fit`, `Pad`, `Basis_Points_Image`. |
-| `.JSON` | `Render`. |
+| `.JSON` | `Render`, `Serialize`. |
+| `.SARIF` | `Render`, `File_URI`, `Encode`. |
+| `.Completion` | `Script`, `Choices`. |
 | `.CLI` | `Execute`, `Run`, `Outcome`, exit-code constants. |
 | `.Text` | `Message`, `Arg`, `Catalog_Is_Valid`, `Has_Message`. |
 

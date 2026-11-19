@@ -143,6 +143,26 @@ package Ada_Quality_Summary.Model is
      (Index_Type => Positive, Element_Type => Finding_Summary);
    --  Finding occurrences.
 
+   Waiver_Rule : constant String := "review-waiver";
+   --  Rule of the finding Ada Quality records for a valid structured review waiver, whose message is
+   --  `INDICATOR target=TARGET justification=TEXT`.
+
+   function Is_Waiver (Finding : Finding_Summary) return Boolean is
+     (Ada.Strings.Unbounded.To_String (Finding.Rule) = Waiver_Rule);
+   --  Test whether a finding records a review waiver.
+   --  @param Finding Finding.
+   --  @return True for a waiver finding.
+
+   function Waiver_Target (Message : String) return String;
+   --  Return the subprogram or file a waiver message names.
+   --  @param Message Waiver finding message.
+   --  @return Text after `target=` up to the justification, or empty when the message names no target.
+
+   function Waiver_Justification (Message : String) return String;
+   --  Return the justification of a waiver message.
+   --  @param Message Waiver finding message.
+   --  @return Text after `justification=`, or the whole message when it has no justification field.
+
    type Regression_Summary is record
       Project_Id      : Positive;
       Current_Run_Id  : Positive;
@@ -233,7 +253,7 @@ package Ada_Quality_Summary.Model is
 
    type Report_Kind is
      (Summary_Report, Projects_Report, Project_Report, Indicators_Report, Indicator_Report, Problems_Report,
-      Regressions_Report, Trends_Report, History_Report);
+      Waivers_Report, Regressions_Report, Compare_Report, Trends_Report, History_Report);
    --  Report command.
    --  @enum Summary_Report Portfolio overview.
    --  @enum Projects_Report Project table.
@@ -241,7 +261,9 @@ package Ada_Quality_Summary.Model is
    --  @enum Indicators_Report Indicator matrix.
    --  @enum Indicator_Report One indicator across projects.
    --  @enum Problems_Report Outstanding findings.
+   --  @enum Waivers_Report Review waivers.
    --  @enum Regressions_Report Regressions.
+   --  @enum Compare_Report Regressions between two chosen assessments.
    --  @enum Trends_Report Historical trends.
    --  @enum History_Report One project history.
 
@@ -373,6 +395,25 @@ package Ada_Quality_Summary.Model is
    package Baseline_Info_Vectors is new Ada.Containers.Vectors
      (Index_Type => Positive, Element_Type => Baseline_Info);
    --  Baseline selections.
+
+   type Pair_Comparison is record
+      Project_Id     : Positive;
+      Baseline       : History_Summary;
+      Current        : History_Summary;
+      Comparison     : Ada_Quality.History.Comparison_Status := Ada_Quality.History.No_Compatible_Baseline;
+      Policy_Changed : Boolean := False;
+      Has_Reason     : Boolean := False;
+      Reason         : Exclusion_Reason := Toolchain_Changed;
+   end record;
+   --  Comparison of two chosen assessments of one project, without automatic baseline substitution.
+   --  @field Project_Id Project owning both assessments.
+   --  @field Baseline Earlier assessment.
+   --  @field Current Later assessment.
+   --  @field Comparison Ada_Quality.Reporting.Compare_Assessments decision.
+   --  @field Policy_Changed Whether the policy differs, so changes the policy caused are classified as
+   --  policy-induced.
+   --  @field Has_Reason Whether two completed assessments were found incompatible.
+   --  @field Reason The incompatibility, when Has_Reason is True.
 
    type State_Snapshot is record
       Day        : UString;

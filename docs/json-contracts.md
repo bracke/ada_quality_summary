@@ -14,7 +14,7 @@ nullability, and forbids undocumented members.
 {
   "schema_version": 1,
   "report_type": "summary",
-  "source": { "application": "ada_quality", "database_schema_version": 3, "snapshot": "fnv1a64:0123456789abcdef" },
+  "source": { "application": "ada_quality", "database_schema_version": 4, "snapshot": "fnv1a64:0123456789abcdef" },
   "selection": { "include_removed": false, "enabled_only": false, "project_id": null, "status": null,
                  "limit": null, "selected_projects": 2 },
   "data": {}
@@ -24,8 +24,9 @@ nullability, and forbids undocumented members.
 `schema_version` versions the report family independently of Ada Quality's assessment JSON. `snapshot` identifies the
 database snapshot the report was computed from.
 
-`database_schema_version` is the persisted Ada Quality schema, currently 3. The specification's envelope examples show
-2, the schema before the timestamp migration that the specification itself requires (section 5.6); 3 is correct.
+`database_schema_version` is the persisted Ada Quality schema, currently 4 (assessment aliases). The specification's
+envelope examples show 2, the schema before the timestamp migration that the specification itself requires (section
+5.6).
 
 ## Report data
 
@@ -37,7 +38,9 @@ database snapshot the report was computed from.
 | `indicators` | `indicators`, `project_count` |
 | `indicator` | `indicator`, `projects`, `totals` |
 | `problems` | `findings`, `grouped_by_indicator`, `totals` |
+| `waivers` | `waivers`, `by_indicator`, `totals` |
 | `regressions` | `regressions`, `projects_affected`, `baseline_exclusions`, `totals` |
+| `compare` | `project`, `baseline`, `current`, `comparison`, `policy_changed`, `incompatibility`, `regressions`, `totals` |
 | `trends` | `series`, `excluded_observations`, `comparison_metadata`, `snapshots` |
 | `history` | `project`, `runs`, `completed_count`, `interrupted_count`, `invalid_count`, `running_count`, `undated_excluded` |
 
@@ -57,6 +60,12 @@ database snapshot the report was computed from.
   `baseline_run_id`, `comparison` (the `Ada_Quality.History.Select_Comparison` decision: `comparison_available`,
   `no_assessments`, `no_baseline`, `current_incomplete`, `no_completed_baseline`, `toolchain_changed`,
   `no_compatible_baseline`), `policy_changed`, and `excluded_runs` with `run_id` and `reason`.
+- **waiver**: `project_id`, `run_id`, `indicator_id`, `target`, `justification`, `relative_path`, `line`,
+  `fingerprint`; `target` is empty and `justification` is the whole message when a waiver message has no fields.
+- **compare**: `baseline` and `current` are runs; `comparison` is the `Ada_Quality.Reporting.Compare_Assessments`
+  decision, `incompatibility` (`missing_source_fingerprint`, `policy_changed`, `toolchain_changed`, or `null`) says
+  why two completed runs are not comparable, and `regressions` is empty unless `comparison` is
+  `comparison_available`.
 - **run**: `run_id`, `state`, fingerprints, `started_at`, `finished_at` (`null` when not persisted), `quality`
   (`null` unless completed).
 
@@ -66,3 +75,6 @@ Optional identities are `null`, never zero. Totals are computed before `--limit`
 
 The test suite validates every report, in compact, pretty, limited, and tombstone-including variants, against its
 schema. `tests/bin/aqs_schema_check SCHEMA_DIR SCHEMA_FILE DOCUMENT` validates a saved report.
+
+SARIF output (`problems --format sarif`) follows the SARIF 2.1.0 specification instead of these schemas; its mapping
+is described in [the command-line documentation](cli.md#output-formats).

@@ -10,7 +10,8 @@ package body Limit_Tests is
          declare
             Data : constant Ada_Quality_Summary.Repository.Snapshot := Ada_Quality_Summary.Repository.Load (Store);
          begin
-            Expect (Ada_Quality_Summary.Repository.Schema_Version (Data) = 3, "unreachable");
+            Expect (Ada_Quality_Summary.Repository.Schema_Version (Data) = Ada_Quality.Reporting.Supported_Schema,
+                    "unreachable");
          end;
       exception
          when Ada_Quality_Summary.Report_Error => Raised := True;
@@ -23,7 +24,8 @@ package body Limit_Tests is
          declare
             Data : constant Ada_Quality_Summary.Repository.Snapshot := Ada_Quality_Summary.Repository.Load (Generous);
          begin
-            Expect (Ada_Quality_Summary.Repository.Schema_Version (Data) = 3, "a snapshot within the limit loads");
+            Expect (Ada_Quality_Summary.Repository.Schema_Version (Data) = Ada_Quality.Reporting.Supported_Schema,
+                    "a snapshot within the limit loads");
          end;
       end;
       declare

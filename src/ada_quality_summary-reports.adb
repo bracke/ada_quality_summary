@@ -96,6 +96,13 @@ package body Ada_Quality_Summary.Reports is
                Item.Project := Build_Project (Data, Repository.Project (Data, Id));
                Selected.Append (Item.Project);
             end;
+         elsif Invocation.Command = Compare_Command then
+            Trends.Compare_Pair
+              (Data, Repository.Resolve_Run (Data, To_String (Invocation.Target)),
+               Repository.Resolve_Run (Data, To_String (Invocation.Second)), Item.Pair, Item.Regressions);
+            Item.Filter.Project_Id := Item.Pair.Project_Id;
+            Item.Project := Build_Project (Data, Repository.Project (Data, Item.Pair.Project_Id));
+            Selected.Append (Item.Project);
          else
             for Row of Build_Projects (Data, Filtering.Population (Data, Item.Filter)) loop
                if not Item.Filter.Has_Status or else Row.Quality = Item.Filter.Status then
@@ -108,8 +115,10 @@ package body Ada_Quality_Summary.Reports is
       --  Compare each selected project with its baseline once, for the reports that show regressions or their counts.
       procedure Compare_Selected is
       begin
-         if Invocation.Command not in Summary_Command | Projects_Command | Project_Command | History_Command |
+         if Invocation.Command = Compare_Command or else
+           (Invocation.Command not in Summary_Command | Projects_Command | Project_Command | History_Command |
                                       Regressions_Command
+            and then not Invocation.Fail_On (Gate_Regressions))
          then
             return;
          end if;
@@ -215,6 +224,60 @@ package body Ada_Quality_Summary.Reports is
          Regressions_Limit.Limit (Item.Regressions, Invocation.Limit);
       end Fill_Regressions;
 
+      --  Waivers: the review-waiver findings of the selected current assessments.
+      procedure Fill_Waivers is
+         Counts : Repository.Indicator_Counts := [others => 0];
+         Owners : Repository.Indicator_Counts := [others => 0];
+
+         --  Add the waivers of one project's current assessment.
+         procedure Add_Project (Row : Project_Summary) is
+            Seen : Repository.Indicator_Counts := [others => 0];
+         begin
+            for Finding of Aggregation.Findings_Of (Row.Project_Id, Repository.Assessment (Data, Row.Current_Run_Id))
+            loop
+               if Is_Waiver (Finding) then
+                  Item.Findings.Append (Finding);
+                  Seen (Finding.Indicator) := Seen (Finding.Indicator) + 1;
+               end if;
+            end loop;
+            for Id in Indicator_Id loop
+               Counts (Id) := Counts (Id) + Seen (Id);
+               Owners (Id) := Owners (Id) + Natural'Min (1, Seen (Id));
+            end loop;
+            if (for some Count of Seen => Count > 0) then
+               Item.Finding_Projects := Item.Finding_Projects + 1;
+            end if;
+         end Add_Project;
+      begin
+         for Row of Selected loop
+            if Row.Current_Run_Id /= 0 then
+               Add_Project (Row);
+            end if;
+         end loop;
+         for Id in Indicator_Id loop
+            if Counts (Id) > 0 then
+               Item.Groups.Append (Finding_Group'(Indicator => Id, Findings => Counts (Id), Projects => Owners (Id)));
+            end if;
+         end loop;
+         Item.Finding_Total := Natural (Item.Findings.Length);
+         Filtering.Sort_Findings (Item.Findings, Invocation.Sort, Invocation.Reverse_Order);
+         Item.Row_Count := Item.Finding_Total;
+         Findings_Limit.Limit (Item.Findings, Invocation.Limit);
+      end Fill_Waivers;
+
+      --  Compare: the regressions between the two chosen assessments, already classified by Select_Projects.
+      procedure Fill_Compare is
+      begin
+         for Change of Item.Regressions loop
+            Item.By_Kind (Change.Kind) := Item.By_Kind (Change.Kind) + 1;
+         end loop;
+         Item.Regression_Total := Natural (Item.Regressions.Length);
+         Item.Projects_Affected := (if Item.Regression_Total > 0 then 1 else 0);
+         Filtering.Sort_Regressions (Item.Regressions, Invocation.Sort, Invocation.Reverse_Order);
+         Item.Row_Count := Item.Regression_Total;
+         Regressions_Limit.Limit (Item.Regressions, Invocation.Limit);
+      end Fill_Compare;
+
       --  Trends: numeric series, undated runs, and daily snapshots.
       procedure Fill_Trends is
       begin
@@ -253,6 +316,29 @@ package body Ada_Quality_Summary.Reports is
          History_Limit.Limit (Item.History, Invocation.Limit);
       end Fill_History;
 
+      --  How often each --fail-on condition holds in the report.
+      procedure Count_Gate is
+      begin
+         if Invocation.Command = Compare_Command then
+            declare
+               Current : constant History_Summary := Item.Pair.Current;
+            begin
+               Item.Gate :=
+                 [Gate_Regressions => Item.Regression_Total,
+                  Gate_Violations  => (if Current.Has_Quality and then Current.Quality = Violations then 1 else 0),
+                  Gate_Incomplete  => (if Current.Has_Quality and then Current.Quality = Incomplete then 1 else 0),
+                  Gate_Unassessed  => (if Current.Has_Quality then 0 else 1)];
+            end;
+            return;
+         end if;
+         for Compared_Project of Compared loop
+            Item.Gate (Gate_Regressions) := Item.Gate (Gate_Regressions) + Natural (Compared_Project.Changes.Length);
+         end loop;
+         Item.Gate (Gate_Violations) := Item.Portfolio.Totals.Violations;
+         Item.Gate (Gate_Incomplete) := Item.Portfolio.Totals.Incomplete;
+         Item.Gate (Gate_Unassessed) := Item.Portfolio.Totals.Unassessed;
+      end Count_Gate;
+
       procedure Fill_Command is
       begin
          case Invocation.Command is
@@ -261,10 +347,12 @@ package body Ada_Quality_Summary.Reports is
             when Indicators_Command => Fill_Indicators;
             when Indicator_Command => Fill_Indicator;
             when Problems_Command => Fill_Problems;
+            when Waivers_Command => Fill_Waivers;
             when Regressions_Command => Fill_Regressions;
+            when Compare_Command => Fill_Compare;
             when Trends_Command => Fill_Trends;
             when History_Command => Fill_History;
-            when Help_Command | Version_Command =>
+            when Help_Command | Completion_Command | Version_Command =>
                raise Report_Error with "command does not produce a report";
          end case;
       end Fill_Command;
@@ -293,6 +381,7 @@ package body Ada_Quality_Summary.Reports is
       Item.Row_Count := Natural (Selected.Length);
 
       Fill_Command;
+      Count_Gate;
       return Item;
    end Build;
 end Ada_Quality_Summary.Reports;

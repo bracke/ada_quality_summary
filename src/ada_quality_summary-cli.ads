@@ -7,6 +7,8 @@ package Ada_Quality_Summary.CLI is
 
    Success_Exit   : constant := 0;
    --  Report generated successfully, including reports that contain quality violations.
+   Gate_Exit      : constant := 1;
+   --  Report generated successfully, and a condition requested with `--fail-on` holds.
    Argument_Exit  : constant := 2;
    --  Invalid command, option, or filter.
    Report_Exit    : constant := 3;

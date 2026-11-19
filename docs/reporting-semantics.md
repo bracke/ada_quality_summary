@@ -57,6 +57,33 @@ identity and explains every completed run skipped between the baseline and the c
 fingerprints were required, `missing_source_fingerprint`). Without a selected baseline the status is `no_baseline`
 and no regression is reported.
 
+## Explicit comparisons
+
+`compare BASELINE CURRENT` resolves each reference, a run ID or an assessment alias, with
+`Ada_Quality.Reporting.Resolve_Assessment`, requires both runs to belong to one project with `BASELINE` the older, and
+compares exactly that pair with `Ada_Quality.Reporting.Compare_Assessments`. No other baseline is substituted. A
+compatible pair, or one that differs only in policy (`policy_changed` true), is `comparison_available` and classified
+like any regression. Otherwise `comparison` is `current_incomplete` or `no_completed_baseline` when a run did not
+complete, or `toolchain_changed` or `no_compatible_baseline` for two incompatible completed runs, whose reason the
+summary names with `Ada_Quality.History.Incompatibility_Of`; such a pair has no regressions.
+
+## Waivers
+
+A valid structured `AQ-WAIVER` comment makes Ada Quality pass the waived SRC-03 or SRC-06 check and record a
+low-severity finding with rule `review-waiver` and message `INDICATOR target=TARGET justification=TEXT`. The `waivers`
+report lists those findings of the selected projects' current assessments, splitting the message at `target=` and
+` justification=`; a message without those fields is shown whole as the justification. Unassessed projects have no
+waivers. The findings stay in `problems` and in its SARIF output, where each is a result suppressed in source.
+
+## Quality gate
+
+`--fail-on` evaluates its conditions on the report's selected population, independently of what the report shows and
+before `--limit`: regressions are the regressions of the selected projects' current assessments against their
+baselines (comparing every selected project when `regressions` is requested), and `violations`, `incomplete`, and
+`unassessed` count selected projects by classification. For `compare` they apply to the compared pair: its
+regressions and the classification of its current run, which counts as unassessed when it did not complete. The
+gate never changes the report.
+
 ## Trends
 
 Numeric series come from `Ada_Quality.History.Metric_Trend`, called per project with the completed runs only, so the

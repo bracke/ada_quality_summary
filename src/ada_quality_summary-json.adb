@@ -6,7 +6,6 @@ with Ada_Quality.Types;
 with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Text;
-with Jsonlib.Documents;
 with Jsonlib.Serializers;
 
 package body Ada_Quality_Summary.JSON is
@@ -433,6 +432,63 @@ package body Ada_Quality_Summary.JSON is
          return Data;
       end Problems_Data;
 
+      function Waivers_Data return Node is
+         Data    : constant Node := Doc.New_Object;
+         Waivers : constant Node := Doc.New_Array;
+         Groups  : constant Node := Doc.New_Array;
+         Totals  : constant Node := Doc.New_Object;
+      begin
+         for Finding of Item.Findings loop
+            declare
+               Object  : constant Node := Doc.New_Object;
+               Message : constant String := To_String (Finding.Message);
+            begin
+               Put (Object, "project_id", Nat (Finding.Project_Id));
+               Put (Object, "run_id", Nat (Finding.Run_Id));
+               Put (Object, "indicator_id", Str (Image (Finding.Indicator)));
+               Put (Object, "target", Str (Waiver_Target (Message)));
+               Put (Object, "justification", Str (Waiver_Justification (Message)));
+               Put (Object, "relative_path", (if Length (Finding.Path) = 0 then Null_Value else Str (Finding.Path)));
+               Put (Object, "line", (if Finding.Line = 0 then Null_Value else Nat (Finding.Line)));
+               Put (Object, "fingerprint", Str (Finding.Fingerprint));
+               Doc.Append (Waivers, Object);
+            end;
+         end loop;
+         Put (Data, "waivers", Waivers);
+         for Group of Item.Groups loop
+            declare
+               Object : constant Node := Doc.New_Object;
+            begin
+               Put (Object, "indicator_id", Str (Image (Group.Indicator)));
+               Put (Object, "waivers", Nat (Group.Findings));
+               Put (Object, "projects", Nat (Group.Projects));
+               Doc.Append (Groups, Object);
+            end;
+         end loop;
+         Put (Data, "by_indicator", Groups);
+         Put (Totals, "waivers", Nat (Item.Finding_Total));
+         Put (Totals, "projects", Nat (Item.Finding_Projects));
+         Put (Data, "totals", Totals);
+         return Data;
+      end Waivers_Data;
+
+      function Compare_Data return Node is
+         Data   : constant Node := Doc.New_Object;
+         Totals : constant Node := Doc.New_Object;
+      begin
+         Put (Data, "project", Project_Object (Item.Project));
+         Put (Data, "baseline", Run_Object (Item.Pair.Baseline));
+         Put (Data, "current", Run_Object (Item.Pair.Current));
+         Put (Data, "comparison", Str (Image (Item.Pair.Comparison)));
+         Put (Data, "policy_changed", Bool (Item.Pair.Policy_Changed));
+         Put (Data, "incompatibility", (if Item.Pair.Has_Reason then Str (Image (Item.Pair.Reason)) else Null_Value));
+         Put (Data, "regressions", Regressions_Array (Item.Regressions));
+         Put (Totals, "regressions", Nat (Item.Regression_Total));
+         Put (Totals, "by_kind", Kind_Counts_Object (Item.By_Kind));
+         Put (Data, "totals", Totals);
+         return Data;
+      end Compare_Data;
+
       function Regressions_Data return Node is
          Data       : constant Node := Doc.New_Object;
          Exclusions : constant Node := Doc.New_Array;
@@ -552,23 +608,29 @@ package body Ada_Quality_Summary.JSON is
                when Indicators_Report => Indicators_Data,
                when Indicator_Report => Indicator_Data,
                when Problems_Report => Problems_Data,
+               when Waivers_Report => Waivers_Data,
                when Regressions_Report => Regressions_Data,
+               when Compare_Report => Compare_Data,
                when Trends_Report => Trends_Data,
                when History_Report => History_Data));
       Doc.Set_Root (Root);
-      declare
-         Settings : constant Jsonlib.Serializers.Options :=
-           (Form => (if Pretty then Jsonlib.Serializers.Pretty else Jsonlib.Serializers.Compact), Indent => 2,
-            Escape_Non_Ascii => False, Sort_Members => False);
-         Text     : constant String := Jsonlib.Serializers.To_String (Doc, Settings) & Character'Val (10);
-      begin
-         if Text'Length > Maximum_Bytes then
-            raise Report_Error with
-              Ada_Quality_Summary.Text.Message
-                ("error.json_size", [Ada_Quality_Summary.Text.Arg ("size", Long_Long_Integer (Text'Length)),
-                                     Ada_Quality_Summary.Text.Arg ("limit", Long_Long_Integer (Maximum_Bytes))]);
-         end if;
-         return Text;
-      end;
+      return Serialize (Doc, Pretty, Maximum_Bytes);
    end Render;
+
+   function Serialize
+     (Doc : Jsonlib.Documents.Document; Pretty : Boolean; Maximum_Bytes : Positive) return String
+   is
+      Settings : constant Jsonlib.Serializers.Options :=
+        (Form => (if Pretty then Jsonlib.Serializers.Pretty else Jsonlib.Serializers.Compact), Indent => 2,
+         Escape_Non_Ascii => False, Sort_Members => False);
+      Text     : constant String := Jsonlib.Serializers.To_String (Doc, Settings) & Character'Val (10);
+   begin
+      if Text'Length > Maximum_Bytes then
+         raise Report_Error with
+           Ada_Quality_Summary.Text.Message
+             ("error.json_size", [Ada_Quality_Summary.Text.Arg ("size", Long_Long_Integer (Text'Length)),
+                                  Ada_Quality_Summary.Text.Arg ("limit", Long_Long_Integer (Maximum_Bytes))]);
+      end if;
+      return Text;
+   end Serialize;
 end Ada_Quality_Summary.JSON;

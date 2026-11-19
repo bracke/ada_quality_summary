@@ -1,0 +1,120 @@
+.TH ADA\-QUALITY\-SUMMARY 1 "" "ada\-quality\-summary 0.1.0" "User Commands"
+.SH NAME
+ada\-quality\-summary \- read\-only reporting over Ada Quality assessments
+.SH SYNOPSIS
+.B ada\-quality\-summary
+[\fIOPTIONS\fR] [\fICOMMAND\fR [\fIARGUMENTS\fR]]
+.SH DESCRIPTION
+ada\-quality\-summary presents the persisted quality status of the projects registered with Ada Quality: a portfolio overview, project and indicator reports, outstanding findings, review waivers, regressions, comparisons of chosen assessments, and historical trends, as terminal tables, Markdown, versioned JSON, or SARIF. It reads one coherent snapshot of the assessment database and never runs measurements or modifies the database.
+.SH COMMANDS
+.TP
+.B summary
+Overall quality overview (default)
+.TP
+.B projects
+Project status table
+.TP
+.B project PROJECT
+Detailed project assessment
+.TP
+.B indicators
+Cross\-project indicator summary
+.TP
+.B indicator ID
+Detailed indicator report
+.TP
+.B problems
+Outstanding quality findings
+.TP
+.B waivers
+Review waivers in current assessments
+.TP
+.B regressions
+Quality regressions
+.TP
+.B compare BASELINE CURRENT
+Regressions between two chosen assessments (run IDs or aliases)
+.TP
+.B trends
+Historical quality trends
+.TP
+.B history PROJECT
+Individual project history
+.TP
+.B help [COMMAND]
+Help and usage
+.TP
+.B completion SHELL
+Shell completion script for bash, zsh, or fish
+.SH OPTIONS
+.TP
+.BI \-\-database " PATH"
+Assessment database path
+.TP
+.BI \-\-format " terminal|json|markdown|sarif"
+Output format (default: terminal)
+.TP
+.BI \-\-color " auto|always|never"
+Terminal color selection
+.TP
+.B \-\-no\-color
+Alias for \-\-color never
+.TP
+.BI \-\-layout " compact|normal|detailed"
+Terminal and markdown layout
+.TP
+.BI \-\-width " N"
+Override detected display width
+.TP
+.B \-\-include\-removed
+Include tombstoned projects
+.TP
+.B \-\-enabled\-only
+Include only enabled projects
+.TP
+.BI \-\-project " PROJECT"
+Restrict collection reports to a project
+.TP
+.BI \-\-status " STATUS"
+Filter by project status
+.TP
+.BI \-\-sort " KEY"
+Command\-specific sorting
+.TP
+.B \-\-reverse
+Reverse selected ordering
+.TP
+.BI \-\-limit " N"
+Maximum result rows (0 means no limit)
+.TP
+.BI \-\-since " DATE"
+Earliest history date (inclusive)
+.TP
+.BI \-\-until " DATE"
+Latest history date (inclusive)
+.TP
+.B \-\-pretty
+Indent JSON and SARIF output
+.TP
+.BI \-\-fail\-on " CONDITIONS"
+Exit 1 if regressions, violations, incomplete, or unassessed hold (comma\-separated)
+.TP
+.B \-\-help
+Show help
+.TP
+.B \-\-version
+Show the version
+.SH ENVIRONMENT
+.TP
+.B ADA_QUALITY_DATABASE
+Database path used when \-\-database is not given; without either, .ada\-quality.db in the current directory.
+.TP
+.B NO_COLOR
+Disables color when \-\-color is auto.
+.TP
+.B COLUMNS
+Display width when standard output is not a terminal.
+.SH EXIT STATUS
+Exit codes: 0 report generated, 1 report generated and a \-\-fail\-on condition holds, 2 invalid arguments, 3 reporting failure, 4 database failure.
+.SH SEE ALSO
+.BR ada\-quality (1)

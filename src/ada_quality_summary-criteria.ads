@@ -61,4 +61,25 @@ package Ada_Quality_Summary.Criteria is
    --  @param Since Inclusive first day.
    --  @param Until_Date Inclusive last day.
    --  @return True when both present bounds admit Time.
+
+   type Gate_Condition is (Gate_Regressions, Gate_Violations, Gate_Incomplete, Gate_Unassessed);
+   --  A condition that `--fail-on` turns into a failing exit status.
+   --  @enum Gate_Regressions A selected project regressed against its baseline, or the compared pair regressed.
+   --  @enum Gate_Violations A selected project's current assessment violates an indicator.
+   --  @enum Gate_Incomplete A selected project's current assessment has unknown results.
+   --  @enum Gate_Unassessed A selected project has no completed assessment.
+
+   type Gate_Set is array (Gate_Condition) of Boolean;
+   --  Conditions requested with `--fail-on`.
+
+   No_Gate : constant Gate_Set := [others => False];
+   --  No condition requested.
+
+   type Gate_Counts is array (Gate_Condition) of Natural;
+   --  How often each condition holds in a report.
+
+   function Image (Condition : Gate_Condition) return String;
+   --  Return the command-line spelling.
+   --  @param Condition Condition.
+   --  @return `regressions`, `violations`, `incomplete`, or `unassessed`.
 end Ada_Quality_Summary.Criteria;

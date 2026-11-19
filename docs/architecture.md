@@ -12,6 +12,9 @@ The summary crate contains no table layout, payload decoder, schema knowledge, i
 algorithm. It consumes typed records from `Ada_Quality.Reporting` and passes opaque history rows to
 `Ada_Quality.History` unchanged. Regressions come from `Ada_Quality.Reporting.Compare_Project` for the current
 (latest completed) assessment, and skipped predecessors are explained by `Ada_Quality.History.Incompatibility_Of`.
+`compare` resolves run IDs and aliases with `Ada_Quality.Reporting.Resolve_Assessment` and compares exactly the chosen
+pair with `Ada_Quality.Reporting.Compare_Assessments`. The waiver report reads the `review-waiver` findings Ada Quality
+persists for valid `AQ-WAIVER` comments; it does not scan sources.
 
 ## Data flow
 
@@ -21,9 +24,11 @@ main ─▶ CLI.Execute
           │ Repository.Load ──▶ Ada_Quality.Reporting.Open
           │                       shared lock, one read transaction, decode, release
           │ Reports.Build                      Filtering, Aggregation, Trends (in memory)
-          │ JSON.Render | Terminal.Render       complete text built in memory
+          │ JSON.Render | SARIF.Render | Terminal.Render (terminal or Markdown mode)
+          │                                    complete text built in memory
           ▼
-        CLI.Run writes the finished text (exit 0, or 3 on output failure)
+        CLI.Run writes the finished text, then any diagnostic
+        (exit 0, 1 when a --fail-on condition holds, or 3 on output failure)
 ```
 
 A snapshot is loaded once per invocation and never holds a database handle, cursor, or lock after `Load` returns.
@@ -50,12 +55,14 @@ computation error never leaves partial JSON on standard output.
 | `.Aggregation` | Project rows, portfolio totals, indicator matrix, finding collection. |
 | `.Trends` | Adapter over `Ada_Quality.History`: baselines, regressions, histories, metric series, daily states. |
 | `.Reports` | Assembly of the single typed report that both renderers consume. |
-| `.Terminal` | Width-aware terminal rendering of a report. |
+| `.Terminal` | Width-aware terminal rendering of a report, and the same sections as Markdown. |
 | `.Terminal.Environment` | Terminal detection, width, color policy, and locale, through `hostkit`. |
 | `.Terminal.Cells` | Display-cell measurement, truncation, and padding. |
-| `.Terminal.Output` | Private: the width-bounded output buffer, fields, notes, and tables. |
-| `.JSON` | Versioned JSON envelope and report-specific data objects. |
-| `.CLI` | Orchestration, database-path precedence, help, exit codes. |
+| `.Terminal.Output` | Private: the width-bounded output buffer, fields, notes, and tables, or their Markdown forms. |
+| `.JSON` | Versioned JSON envelope and report-specific data objects; the shared size-checked serializer. |
+| `.SARIF` | SARIF 2.1.0 log of the problems report. |
+| `.Completion` | Shell completion scripts generated from the command and option tables. |
+| `.CLI` | Orchestration, database-path precedence, help, the `--fail-on` gate, exit codes. |
 
 ## Proved rules
 

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bracke/ada_quality_summary/schemas/compare.schema.json",
+  "title": "Assessment comparison report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "report_type": {
+      "const": "compare"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/source"
+    },
+    "selection": {
+      "$ref": "common.schema.json#/$defs/selection"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "$ref": "common.schema.json#/$defs/project"
+        },
+        "baseline": {
+          "$ref": "common.schema.json#/$defs/run"
+        },
+        "current": {
+          "$ref": "common.schema.json#/$defs/run"
+        },
+        "comparison": {
+          "$ref": "common.schema.json#/$defs/comparison_status"
+        },
+        "policy_changed": {
+          "type": "boolean"
+        },
+        "incompatibility": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/incompatibility"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regressions": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/regression"
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "regressions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_kind": {
+              "$ref": "common.schema.json#/$defs/kind_counts"
+            }
+          },
+          "required": [
+            "regressions",
+            "by_kind"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "project",
+        "baseline",
+        "current",
+        "comparison",
+        "policy_changed",
+        "incompatibility",
+        "regressions",
+        "totals"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_type",
+    "source",
+    "selection",
+    "data"
+  ],
+  "additionalProperties": false
+}

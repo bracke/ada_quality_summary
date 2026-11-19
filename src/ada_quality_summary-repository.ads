@@ -178,6 +178,23 @@ package Ada_Quality_Summary.Repository is
    --  @return Selection and regressions.
    --  @exception Data_Error Stored evidence is corrupt.
 
+   function Resolve_Run (Data : Snapshot; Reference : String) return Positive;
+   --  Resolve a run identity or an assessment alias through Ada_Quality.Reporting.Resolve_Assessment.
+   --  @param Data Snapshot.
+   --  @param Reference Decimal run identity or alias.
+   --  @return Run identity.
+   --  @exception Argument_Error No run or alias matches Reference.
+
+   function Compare_Runs
+     (Data : Snapshot; Baseline_Id, Current_Id : Positive) return Ada_Quality.Reporting.Project_Comparison;
+   --  Compare two chosen assessments of one project through Ada_Quality.Reporting.Compare_Assessments, without
+   --  automatic baseline substitution.
+   --  @param Data Snapshot.
+   --  @param Baseline_Id Earlier assessment of the project.
+   --  @param Current_Id Later assessment of the same project.
+   --  @return Compatibility decision and regressions.
+   --  @exception Data_Error Stored evidence is corrupt.
+
    function Measurements (Data : Snapshot; Project_Id : Positive) return Ada_Quality.Storage.Detail_Vectors.Vector;
    --  Return measurement rows of a project's completed runs for Ada_Quality.History.Metric_Trend.
    --  @param Data Snapshot.

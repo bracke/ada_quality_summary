@@ -10,6 +10,31 @@ package body Ada_Quality_Summary.Terminal.Output is
 
    LF : constant Character := Character'Val (10);
 
+   function Escape (Text : String) return String is
+      Result : Unbounded_String;
+   begin
+      for C of Text loop
+         case C is
+            when '\' | '`' | '*' | '_' | '[' | ']' | '<' | '>' | '|' | '#' | '~' =>
+               Append (Result, '\' & C);
+            when Character'Val (10) | Character'Val (13) =>
+               Append (Result, ' ');
+            when others =>
+               Append (Result, C);
+         end case;
+      end loop;
+      return To_String (Result);
+   end Escape;
+
+   function Trim (Text : String) return String is (Ada.Strings.Fixed.Trim (Text, Ada.Strings.Both));
+
+   --  Append one Markdown line as written.
+   procedure Put (Out_Text : in out Writer; Line : String) is
+   begin
+      Append (Out_Text.Text, Line & LF);
+      Out_Text.At_Blank := False;
+   end Put;
+
    function Decorate (Out_Text : Writer; Text : String; Role : Role_Kind) return String is
    begin
       if not Out_Text.Style.Color or else Role = No_Role then
@@ -29,6 +54,7 @@ package body Ada_Quality_Summary.Terminal.Output is
    procedure Emit (Out_Text : in out Writer; Line : String) is
       Plain : constant Boolean := Ada.Strings.Fixed.Index (Line, [Character'Val (27)]) = 0;
    begin
+      Out_Text.At_Blank := False;
       --  Every construction below already fits; this guard keeps the no-overflow contract unconditional.
       if Plain and then Display_Width (Line) > Out_Text.Style.Width then
          Append (Out_Text.Text, Fit (Line, Out_Text.Style.Width, Out_Text.Style.Unicode) & LF);
@@ -39,13 +65,21 @@ package body Ada_Quality_Summary.Terminal.Output is
 
    procedure Blank (Out_Text : in out Writer) is
    begin
-      Append (Out_Text.Text, LF);
+      if not (Out_Text.Style.Markdown and then Out_Text.At_Blank) then
+         Append (Out_Text.Text, LF);
+         Out_Text.At_Blank := True;
+      end if;
    end Blank;
 
    procedure Heading (Out_Text : in out Writer; Text : String) is
       Fitted : constant String := Fit (Text, Out_Text.Style.Width, Out_Text.Style.Unicode);
    begin
-      if Out_Text.Style.Color then
+      if Out_Text.Style.Markdown then
+         Blank (Out_Text);
+         Out_Text.Headings := Out_Text.Headings + 1;
+         Put (Out_Text, (if Out_Text.Headings = 1 then "# " else "## ") & Escape (Trim (Text)));
+         Blank (Out_Text);
+      elsif Out_Text.Style.Color then
          Emit (Out_Text, Terminal_Styles.Decorate (Fitted, Terminal_Styles.Decoration_Bold, True));
       else
          Emit (Out_Text, Fitted);
@@ -66,7 +100,9 @@ package body Ada_Quality_Summary.Terminal.Output is
         (if Number or else Room <= 0 then Value
          else Fit (Fit (Value, Maximum_Field_Width, Out_Text.Style.Unicode), Room, Out_Text.Style.Unicode));
    begin
-      if Display_Width (Prefix) + Display_Width (Shown) > Out_Text.Style.Width then
+      if Out_Text.Style.Markdown then
+         Put (Out_Text, "- **" & Escape (Label) & ":** " & Escape (Trim (Value)));
+      elsif Display_Width (Prefix) + Display_Width (Shown) > Out_Text.Style.Width then
          --  A very narrow width: label and value on separate lines.
          Emit (Out_Text, Fit ("  " & Label, Out_Text.Style.Width, Out_Text.Style.Unicode));
          Emit (Out_Text, "    " & Decorate (Out_Text, Fit (Value, Out_Text.Style.Width - 4, Out_Text.Style.Unicode),
@@ -91,8 +127,35 @@ package body Ada_Quality_Summary.Terminal.Output is
    function Tier (Out_Text : Writer) return Positive is
      (case Out_Text.Style.Layout is
          when Compact_Layout => 1,
-         when Normal_Layout => (if Out_Text.Style.Width < 80 then 1 elsif Out_Text.Style.Width < 120 then 2 else 3),
+         when Normal_Layout =>
+           (if Out_Text.Style.Markdown or else Out_Text.Style.Width >= 120 then 3
+            elsif Out_Text.Style.Width >= 80 then 2 else 1),
          when Detailed_Layout => 3);
+
+   --  A pipe table of the columns the layout shows; numeric columns are right-aligned.
+   procedure Markdown_Table (Out_Text : in out Writer; Columns : Column_Vectors.Vector; Rows : Row_Vectors.Vector) is
+      function Line_Of (Row : Cell_Vectors.Vector; Kind : Character) return String is
+         Result : Unbounded_String := To_Unbounded_String ("|");
+      begin
+         for Index in 1 .. Natural (Columns.Length) loop
+            if Columns (Index).Priority <= Tier (Out_Text) then
+               Append (Result, " " & (case Kind is
+                                         when 'h' => Escape (To_String (Columns (Index).Header)),
+                                         when '-' => (if Columns (Index).Right then "---:" else "---"),
+                                         when others => Escape (To_String (Row (Index).Text))) & " |");
+            end if;
+         end loop;
+         return To_String (Result);
+      end Line_Of;
+   begin
+      Blank (Out_Text);
+      Put (Out_Text, Line_Of (Cell_Vectors.Empty_Vector, 'h'));
+      Put (Out_Text, Line_Of (Cell_Vectors.Empty_Vector, '-'));
+      for Row of Rows loop
+         Put (Out_Text, Line_Of (Row, 'r'));
+      end loop;
+      Blank (Out_Text);
+   end Markdown_Table;
 
    procedure Table (Out_Text : in out Writer; Columns : Column_Vectors.Vector; Rows : Row_Vectors.Vector) is
       Count   : constant Natural := Natural (Columns.Length);
@@ -219,7 +282,10 @@ package body Ada_Quality_Summary.Terminal.Output is
          end loop;
       end Drop_Optional;
    begin
-      if Out_Text.Style.Width < 40 then
+      if Out_Text.Style.Markdown then
+         Markdown_Table (Out_Text, Columns, Rows);
+         return;
+      elsif Out_Text.Style.Width < 40 then
          Records;
          return;
       end if;
@@ -275,6 +341,11 @@ package body Ada_Quality_Summary.Terminal.Output is
          end;
       end Add;
    begin
+      if Out_Text.Style.Markdown then
+         Put (Out_Text, (if Indent > 2 or else (Text'Length > 0 and then Text (Text'First) = ' ') then "  - " else "- ")
+                        & Escape (Trim (Text)));
+         return;
+      end if;
       for Index in Text'First .. Text'Last + 1 loop
          if Index > Text'Last or else Text (Index) = ' ' then
             if Index > Start then

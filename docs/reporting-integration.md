@@ -73,7 +73,9 @@ images, invalid typed measurements, ownership mismatches, and inconsistent appli
 `Ada_Quality.History.Compatible` requires completed runs from one project, nonempty source identities, and equal policy
 and toolchain fingerprints. `Select_Comparison` selects the baseline, falling back to a policy-changed predecessor, and
 names the reason when none exists; `Incompatibility_Of` names why `Compatible` rejects a predecessor.
-`Reporting.Compare_Project (Item, Project_Id, Current_Id)` makes that comparison for a chosen current assessment.
+`Reporting.Compare_Project (Item, Project_Id, Current_Id)` makes that comparison for a chosen current assessment, and
+`Reporting.Compare_Assessments (Item, Baseline_Id, Current_Id)` compares exactly two chosen assessments without
+substituting a baseline; `Reporting.Resolve_Assessment` resolves a run ID or an assessment alias.
 `Compare` owns the established
 regression classifications, and `Metric_Trend` supplies run-ID-ordered numeric values. Reporting must adapt these APIs,
 not reproduce their algorithms.

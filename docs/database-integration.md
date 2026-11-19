@@ -14,7 +14,7 @@ each other. Encrypted databases are not supported by the read-only mode.
 ## Reporting API (`Ada_Quality.Reporting`)
 
 `Open` validates the path (nonempty, existing regular file), opens the database read-only, requires exactly the eight
-logical tables and schema version 3, reads the projects, runs, results, measurements, and findings tables inside one
+logical tables and the supported schema version (currently 4, which adds append-only assessment aliases), reads the projects, runs, results, measurements, and findings tables inside one
 read transaction, commits it, and closes the database before returning. All later queries operate on the in-memory
 snapshot.
 

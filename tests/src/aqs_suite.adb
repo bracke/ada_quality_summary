@@ -22,6 +22,7 @@ with Ada_Quality.Storage.Testing;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Aggregation;
 with Ada_Quality_Summary.CLI;
+with Ada_Quality_Summary.Completion;
 with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Filtering;
 with Ada_Quality_Summary.JSON;
@@ -29,10 +30,12 @@ with Ada_Quality_Summary.Reports;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Options;
 with Ada_Quality_Summary.Repository;
+with Ada_Quality_Summary.SARIF;
 with Ada_Quality_Summary.Terminal.Cells;
 with Ada_Quality_Summary.Terminal.Environment;
 with Ada_Quality_Summary.Text;
 with Aqs_Fixtures;
+with Aqs_Manual;
 with Aqs_Schema;
 with Project_Tools.Files;
 with Project_Tools.Processes;
@@ -54,7 +57,7 @@ package body Aqs_Suite is
       T037, T038, T039, T040, T041, T042, T043, T044, T045, T046, T047, T048, T049, T050,
       X_Options, X_Precedence, X_Properties, X_Display, X_Catalog, X_Round_Trip, X_Help, X_Concurrent_Readers,
       X_Recovering_Writer, X_Killed_Reader, X_Layouts, X_Sorting, X_Baselines, X_Lifecycle, X_Executions,
-      X_Report_Fields, X_Input_Edges);
+      X_Report_Fields, X_Input_Edges, X_Gate, X_Compare, X_Markdown, X_SARIF, X_Waivers, X_Completion);
 
    type Title_Access is access constant String;
 
@@ -125,7 +128,13 @@ package body Aqs_Suite is
       X_Lifecycle => new String'("Finding_Lifecycle"),
       X_Executions => new String'("Execution_Spellings"),
       X_Report_Fields => new String'("Report_Fields"),
-      X_Input_Edges => new String'("Input_Edges")];
+      X_Input_Edges => new String'("Input_Edges"),
+      X_Gate => new String'("Quality_Gate"),
+      X_Compare => new String'("Explicit_Comparison"),
+      X_Markdown => new String'("Markdown_Output"),
+      X_SARIF => new String'("SARIF_Output"),
+      X_Waivers => new String'("Waiver_Report"),
+      X_Completion => new String'("Shell_Completion_And_Manual")];
 
    type Acceptance_Test (Id : Test_Id) is new AUnit.Simple_Test_Cases.Test_Case with null record;
    overriding function Name (Item : Acceptance_Test) return AUnit.Message_String;
@@ -159,12 +168,13 @@ package body Aqs_Suite is
      (Violations : String := ""; Unknowns : String := ""; NA : String := ""; Policy : String := "policy-a";
       Toolchain : String := "toolchain-a"; Findings : Natural := 1; Fingerprint : String := "";
       Coverage : Long_Long_Integer := 9_500; Status : Assessment_Status := Assessment_Completed;
-      Source : String := "source-a"; Level : Severity := Medium; Unknown_Run : Execution_Status := Blocked)
-      return Plan is
+      Source : String := "source-a"; Level : Severity := Medium; Unknown_Run : Execution_Status := Blocked;
+      Waivers : String := "") return Plan is
      ((Violations => Set_Of (Violations), Unknowns => Set_Of (Unknowns), Not_Applicable => Set_Of (NA),
        Findings => Findings, Fingerprint => To_Unbounded_String (Fingerprint), Level => Level,
        Coverage => Coverage, Source => To_Unbounded_String (Source), Policy => To_Unbounded_String (Policy),
-       Toolchain => To_Unbounded_String (Toolchain), Status => Status, Unknown_Run => Unknown_Run));
+       Toolchain => To_Unbounded_String (Toolchain), Status => Status, Unknown_Run => Unknown_Run,
+       Waivers => Set_Of (Waivers)));
 
    --  A fresh fixture directory and the absolute path of its (not yet created) database.
    function New_Database (Name : String) return String is (Absolute (Dir (Name)) & "/quality.db");
@@ -294,7 +304,7 @@ package body Aqs_Suite is
    type Text_List is array (Positive range <>) of Text_Access;
 
    Layout_Names : constant Text_List := [new String'("compact"), new String'("normal"), new String'("detailed")];
-   Format_Names : constant Text_List := [new String'("terminal"), new String'("json")];
+   Format_Names : constant Text_List := [new String'("terminal"), new String'("json"), new String'("markdown")];
    Variants     : constant Text_List :=
      [new String'(""), new String'("|--pretty"), new String'("|--limit|1"), new String'("|--include-removed")];
    Trap_Names   : constant Text_List :=
@@ -303,10 +313,10 @@ package body Aqs_Suite is
       new String'("ada-quality"), new String'("check_all")];
    Unicode_Widths : constant array (1 .. 4) of Positive := [40, 60, 80, 120];
 
-   All_Commands : constant Text_List (1 .. 9) :=
+   All_Commands : constant Text_List (1 .. 11) :=
      [new String'("summary"), new String'("projects"), new String'("project|alpha"), new String'("indicators"),
-      new String'("indicator|TST-03"), new String'("problems"), new String'("regressions"), new String'("trends"),
-      new String'("history|alpha")];
+      new String'("indicator|TST-03"), new String'("problems"), new String'("waivers"), new String'("regressions"),
+      new String'("compare|1|2"), new String'("trends"), new String'("history|alpha")];
 
    Template_Built : Boolean := False;
 
@@ -512,6 +522,19 @@ package body Aqs_Suite is
    package body Review_Tests is separate;
    use Review_Tests;
 
+   --  Additions: the --fail-on quality gate, explicit comparisons, Markdown and SARIF output, the waiver report, and
+   --  shell completion with the manual page
+   package Feature_Tests is
+      procedure Quality_Gate;
+      procedure Explicit_Comparison;
+      procedure Markdown_Output;
+      procedure SARIF_Output;
+      procedure Waiver_Report;
+      procedure Shell_Completion;
+   end Feature_Tests;
+   package body Feature_Tests is separate;
+   use Feature_Tests;
+
    procedure Dispatch (Id : Test_Id);
 
    overriding procedure Run_Test (Item : in out Acceptance_Test) is
@@ -564,6 +587,12 @@ package body Aqs_Suite is
    procedure Run_Execution_Spellings is new Ignoring_Id (Execution_Spellings);
    procedure Run_Report_Fields is new Ignoring_Id (Report_Fields);
    procedure Run_Input_Edges is new Ignoring_Id (Input_Edges);
+   procedure Run_Quality_Gate is new Ignoring_Id (Quality_Gate);
+   procedure Run_Explicit_Comparison is new Ignoring_Id (Explicit_Comparison);
+   procedure Run_Markdown_Output is new Ignoring_Id (Markdown_Output);
+   procedure Run_SARIF_Output is new Ignoring_Id (SARIF_Output);
+   procedure Run_Waiver_Report is new Ignoring_Id (Waiver_Report);
+   procedure Run_Shell_Completion is new Ignoring_Id (Shell_Completion);
 
    type Runner is access procedure (Id : Test_Id);
 
@@ -601,7 +630,13 @@ package body Aqs_Suite is
       X_Lifecycle => Run_Finding_Lifecycle'Access,
       X_Executions => Run_Execution_Spellings'Access,
       X_Report_Fields => Run_Report_Fields'Access,
-      X_Input_Edges => Run_Input_Edges'Access];
+      X_Input_Edges => Run_Input_Edges'Access,
+      X_Gate => Run_Quality_Gate'Access,
+      X_Compare => Run_Explicit_Comparison'Access,
+      X_Markdown => Run_Markdown_Output'Access,
+      X_SARIF => Run_SARIF_Output'Access,
+      X_Waivers => Run_Waiver_Report'Access,
+      X_Completion => Run_Shell_Completion'Access];
 
    procedure Dispatch (Id : Test_Id) is
    begin

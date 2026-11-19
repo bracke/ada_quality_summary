@@ -21,7 +21,11 @@ package body Ada_Quality_Summary.Text is
      "en.error.invalid_choice = invalid value {value} for {option}; expected one of: {choices}" & LF &
      "en.error.invalid_date = invalid date {value}; expected YYYY-MM-DD" & LF &
      "en.error.invalid_number = invalid number {value} for {option}" & LF &
-     "en.error.json_only = option {option} applies only to --format json" & LF &
+     "en.error.json_only = option {option} applies only to JSON and SARIF output" & LF &
+     "en.error.text_only = option {option} applies only to terminal and markdown output" & LF &
+     "en.error.sarif_command = --format sarif is available for the problems command, not {command}" & LF &
+     "en.error.missing_assessments = command compare requires a BASELINE and a CURRENT assessment" & LF &
+     "en.error.missing_shell = command completion requires a SHELL: bash, zsh, or fish" & LF &
      "en.error.missing_indicator = command indicator requires an indicator ID such as TST-03" & LF &
      "en.error.missing_project = command {command} requires a PROJECT argument" & LF &
      "en.error.missing_value = option {option} requires a value" & LF &
@@ -39,12 +43,16 @@ package body Ada_Quality_Summary.Text is
      "en.error.ambiguous_project = project name {project} is ambiguous; matching project IDs: {ids}" & LF &
      "en.error.more_matches = , and {count} more" & LF &
      "en.error.unknown_indicator = unknown indicator {indicator}" & LF &
+     "en.error.unknown_assessment = unknown assessment {reference}; expected a run ID or an assessment alias" & LF &
+     "en.error.compare_projects = the compared assessments belong to different projects" & LF &
+     "en.error.compare_order = the baseline assessment must be older than the current assessment" & LF &
      --  Runtime diagnostics.
      "en.error.prefix = ada-quality-summary: {message}" & LF &
      "en.error.hint = run ada-quality-summary help for usage" & LF &
      "en.error.output = cannot write report output: {message}" & LF &
      "en.error.json_size = JSON report of {size} bytes exceeds the limit of {limit} bytes" & LF &
      "en.error.internal = internal error: {message}" & LF &
+     "en.error.gate_failed = quality gate failed: {conditions}" & LF &
      "en.label.title = ADA QUALITY SUMMARY" & LF &
      "en.label.projects_column = Projects" & LF &
      "en.label.status.passing = Passing" & LF &
@@ -58,6 +66,8 @@ package body Ada_Quality_Summary.Text is
      "en.label.activity = ASSESSMENT ACTIVITY" & LF &
      "en.label.indicators = INDICATORS" & LF &
      "en.label.problems = PROBLEMS" & LF &
+     "en.label.waivers = WAIVERS" & LF &
+     "en.label.compare_title = COMPARE {value}" & LF &
      "en.label.trends = TRENDS" & LF &
      "en.label.baselines = BASELINES" & LF &
      "en.label.findings_heading = FINDINGS" & LF &
@@ -77,6 +87,10 @@ package body Ada_Quality_Summary.Text is
      "en.label.newer_running = Newer running assessments: {value}" & LF &
      "en.label.newer_unfinished = Newer interrupted or invalid assessments: {value}" & LF &
      "en.label.finding_total = Findings: {value}" & LF &
+     "en.label.waiver_total = Waivers: {value}" & LF &
+     "en.label.projects_with_waivers = Projects with waivers: {value}" & LF &
+     "en.label.pair_run = {run} ({state}, finished {finished})" & LF &
+     "en.label.pair.policy_changed = The policy changed; changes it caused are classified as policy-induced." & LF &
      "en.label.undated = Runs without persisted timestamps excluded by the date filter: {value}" & LF &
      "en.label.counts_value = {passed}/{applicable} applicable passing, {violated} violated," &
        " {unknown} unknown, {na} not applicable" & LF &
@@ -107,6 +121,7 @@ package body Ada_Quality_Summary.Text is
      "en.label.newer.none = none" & LF &
      "en.label.no_projects = No projects selected." & LF &
      "en.label.no_findings = No findings." & LF &
+     "en.label.no_waivers = No waivers." & LF &
      "en.label.no_regressions = No regressions." & LF &
      "en.label.no_runs = No runs." & LF &
      "en.label.no_assessment = No completed assessment exists for this project." & LF &
@@ -162,6 +177,11 @@ package body Ada_Quality_Summary.Text is
      "en.label.date = Date" & LF &
      "en.label.value = Value" & LF &
      "en.label.observed = Observed" & LF &
+     "en.label.target = Target" & LF &
+     "en.label.justification = Justification" & LF &
+     "en.label.baseline_run = Baseline run" & LF &
+     "en.label.comparison = Comparison" & LF &
+     "en.label.incompatibility = Incompatible" & LF &
      "en.quality.passing = PASSING" & LF &
      "en.quality.violations = VIOLATIONS" & LF &
      "en.quality.incomplete = INCOMPLETE" & LF &
@@ -194,23 +214,26 @@ package body Ada_Quality_Summary.Text is
      "en.help.command_usage = Usage: ada-quality-summary [OPTIONS] {usage}" & LF &
      "en.help.accepts = Accepted options:" & LF &
      "en.help.sort_keys = Sort keys: {keys}" & LF &
-     "en.help.exit = Exit codes: 0 report generated, 2 invalid arguments, 3 reporting failure, 4" &
-       " database failure." & LF &
+     "en.help.exit = Exit codes: 0 report generated, 1 report generated and a --fail-on condition holds, 2" &
+       " invalid arguments, 3 reporting failure, 4 database failure." & LF &
      "en.help.cmd.summary = Overall quality overview (default)" & LF &
      "en.help.cmd.projects = Project status table" & LF &
      "en.help.cmd.project = Detailed project assessment" & LF &
      "en.help.cmd.indicators = Cross-project indicator summary" & LF &
      "en.help.cmd.indicator = Detailed indicator report" & LF &
      "en.help.cmd.problems = Outstanding quality findings" & LF &
+     "en.help.cmd.waivers = Review waivers in current assessments" & LF &
      "en.help.cmd.regressions = Quality regressions" & LF &
+     "en.help.cmd.compare = Regressions between two chosen assessments (run IDs or aliases)" & LF &
      "en.help.cmd.trends = Historical quality trends" & LF &
      "en.help.cmd.history = Individual project history" & LF &
      "en.help.cmd.help = Help and usage" & LF &
+     "en.help.cmd.completion = Shell completion script for bash, zsh, or fish" & LF &
      "en.help.opt.database = Assessment database path" & LF &
      "en.help.opt.format = Output format (default: terminal)" & LF &
      "en.help.opt.color = Terminal color selection" & LF &
      "en.help.opt.no_color = Alias for --color never" & LF &
-     "en.help.opt.layout = Terminal layout" & LF &
+     "en.help.opt.layout = Terminal and markdown layout" & LF &
      "en.help.opt.width = Override detected display width" & LF &
      "en.help.opt.include_removed = Include tombstoned projects" & LF &
      "en.help.opt.enabled_only = Include only enabled projects" & LF &
@@ -221,7 +244,9 @@ package body Ada_Quality_Summary.Text is
      "en.help.opt.limit = Maximum result rows (0 means no limit)" & LF &
      "en.help.opt.since = Earliest history date (inclusive)" & LF &
      "en.help.opt.until = Latest history date (inclusive)" & LF &
-     "en.help.opt.pretty = Indent JSON output" & LF &
+     "en.help.opt.pretty = Indent JSON and SARIF output" & LF &
+     "en.help.opt.fail_on = Exit 1 if regressions, violations, incomplete, or unassessed hold" &
+       " (comma-separated)" & LF &
      "en.help.opt.help = Show help" & LF &
      "en.help.opt.version = Show the version" & LF &
      "en.help.version = ada-quality-summary {version}" & LF;

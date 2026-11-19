@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bracke/ada_quality_summary/schemas/waivers.schema.json",
+  "title": "Review waiver report",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "report_type": {
+      "const": "waivers"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/source"
+    },
+    "selection": {
+      "$ref": "common.schema.json#/$defs/selection"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "waivers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "run_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "indicator_id": {
+                "$ref": "common.schema.json#/$defs/indicator_id"
+              },
+              "target": {
+                "type": "string"
+              },
+              "justification": {
+                "type": "string"
+              },
+              "relative_path": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "line": {
+                "$ref": "common.schema.json#/$defs/optional_id"
+              },
+              "fingerprint": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "project_id",
+              "run_id",
+              "indicator_id",
+              "target",
+              "justification",
+              "relative_path",
+              "line",
+              "fingerprint"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "by_indicator": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "indicator_id": {
+                "$ref": "common.schema.json#/$defs/indicator_id"
+              },
+              "waivers": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "projects": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "indicator_id",
+              "waivers",
+              "projects"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "waivers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "projects": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "waivers",
+            "projects"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "waivers",
+        "by_indicator",
+        "totals"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_type",
+    "source",
+    "selection",
+    "data"
+  ],
+  "additionalProperties": false
+}

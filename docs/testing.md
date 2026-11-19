@@ -5,13 +5,15 @@ alr test                        # build tests/ and run the AUnit suite
 tests/bin/aqs_coverage          # instrumented suite and the 90% production line-coverage gate
 tests/bin/aqs_release_stage     # stage and build the pin-free release manifest
 tests/bin/check_all             # all release checks, incl. GNATdoc, proof, and staged release (repository root)
+tests/bin/aqs_manpage           # regenerate docs/ada-quality-summary.1 after changing commands, options, or help
 ```
 
 ## Fixtures
 
 `tests/src/aqs_fixtures.ads` builds every database through the supported Ada Quality APIs: `Storage.Add_Project`,
-`Storage.Publish`, `Start_Assessment`, `Interrupt_Assessment`, `Set_Enabled`, and `Remove_Project`. Synthetic
-assessments satisfy the 33-indicator publication invariants. Corruption (`Storage.Testing_Corrupt`) and schema changes
+`Storage.Publish`, `Start_Assessment`, `Interrupt_Assessment`, `Add_Assessment_Alias`, `Set_Enabled`, and
+`Remove_Project`. Synthetic assessments satisfy the 33-indicator publication invariants; a plan's `Waivers` adds the
+low-severity `review-waiver` finding Ada Quality records for a valid `AQ-WAIVER` comment to a passing indicator. Corruption (`Storage.Testing_Corrupt`) and schema changes
 (`Storage.Testing_Set_Schema_Version`) are applied only to disposable copies. Legacy schema-2 evidence is published
 with `Storage.Testing_Use_Legacy_Evidence`. Fixtures live in a per-process directory under the system temporary
 directory, outside the project, and are removed when the test program exits (set `AQS_KEEP_FIXTURES` to keep them),
@@ -20,7 +22,8 @@ databases are committed: `tests/fixtures/` holds only a note, because stored bin
 persistence schema they are meant to exercise.
 
 `tests/bin/aqs_demo DIRECTORY` creates a demonstration database with passing, violating, incomplete, unassessed,
-disabled, and removed projects, compatible and incompatible histories, and running and interrupted runs.
+disabled, and removed projects, compatible and incompatible histories, running and interrupted runs, and review
+waivers.
 
 ## Acceptance catalog
 
@@ -60,6 +63,25 @@ baseline-selection reason, reintroduced findings and raised severities, the bloc
 spellings, common violations and per-project regression counts, and input edges: the last representable `--until`
 day, help options checked against the topic, a shortened list of ambiguous matches, undated runs under `--until`, and
 corrupt baseline evidence exiting 4.
+
+Feature cases cover the additions:
+
+- **Quality gate**: each `--fail-on` condition on collection, detail, and compare reports; the report is unchanged by
+  a failing gate, the diagnostic names every condition that holds and follows the report, the executable exits 1, and
+  malformed or misplaced conditions exit 2.
+- **Explicit comparison**: run IDs and aliases; compatible, toolchain-changed, policy-changed, and interrupted pairs;
+  wrong order, different projects, and unknown references.
+- **Markdown**: every command and layout renders as Markdown with a title, no terminal escapes, tables separated from
+  the text before them, and no double blank lines; fields carry the JSON totals and punctuation is escaped.
+- **SARIF**: one result per finding with consistent rule indexes, levels, stored fingerprints, percent-encoded project
+  roots, waivers suppressed in source, and rejection with any command but `problems`.
+- **Waivers**: counts per indicator and project, target and justification parsing, both orders, filters, limits,
+  and the empty report.
+- **Completion and manual**: every option and command in each shell's script, bash completing a choice, a command,
+  and an option when sourced, and the committed manual page equal to the generated one.
+
+Every report, including `waivers` and `compare`, takes part in the schema, round-trip, layout-width, read-only, and
+no-tools cases, and those cases also run with `--format markdown`.
 
 Assertions read JSON through `Value`, which fails when a path is missing, so two missing fields never compare equal;
 `Value_Or_Absent` is used only where absence is the expected result. Group procedures raise for a test identity they

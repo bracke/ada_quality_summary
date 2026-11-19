@@ -51,6 +51,7 @@ package Aqs_Fixtures is
       Toolchain      : UString := Ada.Strings.Unbounded.To_Unbounded_String ("toolchain-a");
       Status         : Assessment_Status := Assessment_Completed;
       Unknown_Run    : Execution_Status := Blocked;
+      Waivers        : Indicator_Set := No_Indicators;
    end record;
    --  Shape of a synthetic assessment that satisfies the 33-indicator publication invariants.
    --  @field Violations Indicators that violate their requirement.
@@ -66,6 +67,8 @@ package Aqs_Fixtures is
    --  @field Toolchain Toolchain fingerprint.
    --  @field Status Terminal lifecycle state.
    --  @field Unknown_Run Execution state of every unknown result: blocked, failed, or errored.
+   --  @field Waivers Passing indicators that record a review waiver, as Ada Quality does for a valid structured
+   --  `AQ-WAIVER` comment: one low-severity `review-waiver` finding naming its target and justification.
 
    function Build (Project_Id : Positive; Shape : Plan) return Assessment;
    --  Build a publishable assessment.
@@ -121,6 +124,12 @@ package Aqs_Fixtures is
    --  @param Database Database path.
    --  @param Project_Id Project.
    --  @return Run identity.
+
+   procedure Alias (Database : String; Run_Id : Positive; Name : String);
+   --  Give a completed assessment an alias.
+   --  @param Database Database path.
+   --  @param Run_Id Completed run.
+   --  @param Name Canonical alias.
 
    procedure Interrupt (Database : String; Run_Id : Positive);
    --  Interrupt a running assessment.

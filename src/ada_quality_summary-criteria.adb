@@ -3,6 +3,13 @@ with Ada.Calendar.Formatting;
 package body Ada_Quality_Summary.Criteria is
    use type Ada.Calendar.Time;
 
+   function Image (Condition : Gate_Condition) return String is
+     (case Condition is
+         when Gate_Regressions => "regressions",
+         when Gate_Violations => "violations",
+         when Gate_Incomplete => "incomplete",
+         when Gate_Unassessed => "unassessed");
+
    function Image (Key : Sort_Key) return String is
      (case Key is
          when Default_Sort => "default",

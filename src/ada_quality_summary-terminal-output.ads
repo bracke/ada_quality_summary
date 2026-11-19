@@ -2,7 +2,8 @@ with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
 
 --  Width-bounded line output for the terminal renderer: an output buffer, styled fields, wrapped notes, and tables
---  that shrink text, drop optional columns, or fall back to records to fit the terminal width.
+--  that shrink text, drop optional columns, or fall back to records to fit the terminal width. With Markdown set,
+--  the same calls write headings, bullet items, and pipe tables, with Markdown punctuation in text escaped.
 private package Ada_Quality_Summary.Terminal.Output is
    --  Width-bounded line output for the terminal renderer.
 
@@ -18,12 +19,21 @@ private package Ada_Quality_Summary.Terminal.Output is
    --  @enum Muted_Role Muted styling.
 
    type Writer is record
-      Text  : Unbounded_String;
-      Style : Settings;
+      Text     : Unbounded_String;
+      Style    : Settings;
+      At_Blank : Boolean := True;
+      Headings : Natural := 0;
    end record;
    --  Output buffer and the presentation settings it is written with.
    --  @field Text Lines written so far, each ending with a line feed.
    --  @field Style Presentation settings.
+   --  @field At_Blank Whether nothing or an empty line was written last, so Markdown blocks are separated once.
+   --  @field Headings Headings written so far; the first is the Markdown document title.
+
+   function Escape (Text : String) return String;
+   --  Escape Markdown punctuation and replace line breaks with spaces, so text renders literally.
+   --  @param Text Plain text.
+   --  @return Markdown text.
 
    function Decorate (Out_Text : Writer; Text : String; Role : Role_Kind) return String;
    --  Apply the color of Role when color output is enabled.
@@ -38,11 +48,11 @@ private package Ada_Quality_Summary.Terminal.Output is
    --  @param Line Line without its line feed.
 
    procedure Blank (Out_Text : in out Writer);
-   --  Append an empty line.
+   --  Append an empty line; in Markdown, only when the last line written is not already empty.
    --  @param Out_Text Writer.
 
    procedure Heading (Out_Text : in out Writer; Text : String);
-   --  Append a section heading, bold when color is enabled.
+   --  Append a section heading, bold when color is enabled; in Markdown a level-one heading first, then level two.
    --  @param Out_Text Writer.
    --  @param Text Heading text.
 
@@ -54,6 +64,7 @@ private package Ada_Quality_Summary.Terminal.Output is
       Role        : Role_Kind := No_Role;
       Number      : Boolean := False);
    --  Append `  Label  Value`, truncating only the value; at very narrow widths label and value take one line each.
+   --  In Markdown, a `- **Label:** Value` item.
    --  @param Out_Text Writer.
    --  @param Label Field label.
    --  @param Value Field value.
@@ -113,19 +124,21 @@ private package Ada_Quality_Summary.Terminal.Output is
    --  @return Cell.
 
    function Tier (Out_Text : Writer) return Positive;
-   --  Return the highest column priority shown for the layout and width.
+   --  Return the highest column priority shown for the layout and width; Markdown has no width limit.
    --  @param Out_Text Writer.
    --  @return One, two, or three.
 
    procedure Table (Out_Text : in out Writer; Columns : Column_Vectors.Vector; Rows : Row_Vectors.Vector);
    --  Render rows as aligned columns, shrinking text and dropping optional columns to fit; fall back to records.
+   --  In Markdown, a pipe table of the columns the layout shows.
    --  @param Out_Text Writer.
    --  @param Columns Columns.
    --  @param Rows Rows, each with one cell per column.
 
    procedure Note (Out_Text : in out Writer; Text : String; Indent : Natural := 2);
    --  Append prose wrapped at word boundaries; continuation lines are indented two further cells, and a single
-   --  word wider than the line is truncated rather than split.
+   --  word wider than the line is truncated rather than split. In Markdown, one bullet item, nested when Text starts
+   --  with spaces.
    --  @param Out_Text Writer.
    --  @param Text Prose.
    --  @param Indent Indentation of the first line.

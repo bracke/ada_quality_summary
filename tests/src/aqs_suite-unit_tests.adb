@@ -157,6 +157,9 @@ package body Unit_Tests is
          Expect (Comparisons_For ("indicators") = 0, "indicators makes no comparison");
          Expect (Comparisons_For ("problems") = 0, "problems makes no comparison");
          Expect (Comparisons_For ("trends") = 0, "trends makes no baseline comparison");
+         Expect (Comparisons_For ("problems|--fail-on|regressions") = 3,
+                 "--fail-on regressions compares every project");
+         Expect (Comparisons_For ("compare|1|2") = 0, "compare makes no baseline selection");
       end;
       --  Every positive identity parses, however many digits it has; nothing beyond Positive'Last does.
       declare
@@ -262,7 +265,7 @@ package body Unit_Tests is
 
    procedure Help_Topics is
    begin
-      for Command in Ada_Quality_Summary.Options.Summary_Command .. Ada_Quality_Summary.Options.Help_Command loop
+      for Command in Ada_Quality_Summary.Options.Named_Command loop
          declare
             Topic  : constant String := Ada_Quality_Summary.Options.Name (Command);
             Result : constant Ada_Quality_Summary.CLI.Outcome := Run ("help " & Topic);
