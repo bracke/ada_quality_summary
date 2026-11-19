@@ -105,11 +105,11 @@ package body Ada_Quality_Summary.Options is
 
    function Accepts (Command : Command_Kind; Option : Option_Kind) return Boolean is
      (case Option is
-         when Project_Option | Status_Option => Is_Collection (Command),
+         when Help_Option | Version_Option => True,
+         when Project_Option | Status_Option | Enabled_Only_Option => Is_Collection (Command),
          when Since_Option | Until_Option => Is_Historical (Command),
-         when Fail_On_Option => Command in Report_Command,
          when Sort_Option => (for some Key in Sort_Name .. Sort_Key'Last => Allowed (Command, Key)),
-         when others => True);
+         when others => Command in Report_Command);
 
    function Allowed (Command : Command_Kind; Key : Sort_Key) return Boolean is
    begin
@@ -285,8 +285,7 @@ package body Ada_Quality_Summary.Options is
       Has_Command  : Boolean := False;
       Help_Flag    : Boolean := False;
       Version_Flag : Boolean := False;
-      Has_Format, Has_Width, Has_Sort, Has_Limit, Has_Since, Has_Until, Has_Fail_On : Boolean := False;
-      Seen_Flags   : array (1 .. 4) of Boolean := [others => False];
+      Given        : array (Option_Kind) of Boolean := [others => False];
       Index        : Positive := 1;
 
       --  Return the option value from `--name=value` or the following argument. A following argument that is itself
@@ -304,18 +303,14 @@ package body Ada_Quality_Summary.Options is
          return Arguments (Index);
       end Value_Of;
 
-      procedure Once (Seen : in out Boolean; Option : String) is
+      --  Record that Option was given; every option except --help and --version may be given once.
+      procedure Once (Option : Option_Kind) is
       begin
-         if Seen then
-            Fail ("error.duplicate_option", [Arg ("option", Option)]);
+         if Given (Option) then
+            Fail ("error.duplicate_option", [Arg ("option", Spelling (Option))]);
          end if;
-         Seen := True;
+         Given (Option) := True;
       end Once;
-
-      procedure Flag (Slot : Positive; Option : String) is
-      begin
-         Once (Seen_Flags (Slot), Option);
-      end Flag;
 
       procedure Handle_Option (Item : String) is
          Equals     : constant Natural := Ada.Strings.Fixed.Index (Item, "=");
@@ -340,19 +335,19 @@ package body Ada_Quality_Summary.Options is
             elsif Option = Spelling (Version_Option) then
                Version_Flag := True;
             elsif Option = Spelling (Include_Removed_Option) then
-               Flag (1, Option);
+               Once (Include_Removed_Option);
                Result.Include_Removed := True;
             elsif Option = Spelling (Enabled_Only_Option) then
-               Flag (2, Option);
+               Once (Enabled_Only_Option);
                Result.Enabled_Only := True;
             elsif Option = Spelling (Reverse_Option) then
-               Flag (3, Option);
+               Once (Reverse_Option);
                Result.Reverse_Order := True;
             elsif Option = Spelling (Pretty_Option) then
-               Flag (4, Option);
+               Once (Pretty_Option);
                Result.Pretty := True;
             elsif Option = Spelling (No_Color_Option) then
-               Once (Result.Has_Color, Spelling (Color_Option));
+               Once (Color_Option);
                Result.Color := Color_Never;
             else
                return False;
@@ -365,25 +360,25 @@ package body Ada_Quality_Summary.Options is
          function Output_Option return Boolean is
          begin
             if Option = Spelling (Format_Option) then
-               Once (Has_Format, Option);
+               Once (Format_Option);
                Result.Format := Parse_Format (Option, Value);
             elsif Option = Spelling (Color_Option) then
-               Once (Result.Has_Color, Option);
+               Once (Color_Option);
                Result.Color := Parse_Color (Option, Value);
             elsif Option = Spelling (Layout_Option) then
-               Once (Result.Has_Layout, Option);
+               Once (Layout_Option);
                Result.Layout := Parse_Layout (Option, Value);
             elsif Option = Spelling (Width_Option) then
-               Once (Has_Width, Option);
+               Once (Width_Option);
                Result.Width := Parse_Natural (Option, Value);
                if Result.Width not in Minimum_Width .. Maximum_Width then
                   Fail ("error.width_range", [Arg ("minimum", Minimum_Width), Arg ("maximum", Maximum_Width)]);
                end if;
             elsif Option = Spelling (Sort_Option) then
-               Once (Has_Sort, Option);
+               Once (Sort_Option);
                Result.Sort := Parse_Sort (Value);
             elsif Option = Spelling (Limit_Option) then
-               Once (Has_Limit, Option);
+               Once (Limit_Option);
                Result.Limit := Parse_Natural (Option, Value);
             else
                return False;
@@ -396,25 +391,25 @@ package body Ada_Quality_Summary.Options is
          function Selection_Option return Boolean is
          begin
             if Option = Spelling (Database_Option) then
-               Once (Result.Has_Database, Option);
+               Once (Database_Option);
                Result.Database := To_Unbounded_String (Value);
                if Length (Result.Database) = 0 then
                   Fail ("error.empty_database");
                end if;
             elsif Option = Spelling (Project_Option) then
-               Once (Result.Has_Project, Option);
+               Once (Project_Option);
                Result.Project := To_Unbounded_String (Value);
             elsif Option = Spelling (Status_Option) then
-               Once (Result.Has_Status, Option);
+               Once (Status_Option);
                Result.Status := Parse_Status (Option, Value);
             elsif Option = Spelling (Since_Option) then
-               Once (Has_Since, Option);
+               Once (Since_Option);
                Result.Since := (Present => True, Value => Parse_Date (Value));
             elsif Option = Spelling (Until_Option) then
-               Once (Has_Until, Option);
+               Once (Until_Option);
                Result.Until_Date := (Present => True, Value => Parse_Date (Value));
             elsif Option = Spelling (Fail_On_Option) then
-               Once (Has_Fail_On, Option);
+               Once (Fail_On_Option);
                Result.Fail_On := Parse_Gates (Option, Value);
             else
                return False;
@@ -465,28 +460,21 @@ package body Ada_Quality_Summary.Options is
          end if;
       end Check_Target;
 
+      --  Reject every given option the command does not accept, by the one rule help applies too.
       procedure Check_Scope is
       begin
-         if Result.Has_Project and then not Accepts (Result.Command, Project_Option) then
-            Fail ("error.option_not_allowed",
-                  [Arg ("option", Spelling (Project_Option)), Arg ("command", Name (Result.Command))]);
-         elsif Result.Has_Status and then not Accepts (Result.Command, Status_Option) then
-            Fail ("error.option_not_allowed",
-                  [Arg ("option", Spelling (Status_Option)), Arg ("command", Name (Result.Command))]);
-         elsif Has_Fail_On and then not Accepts (Result.Command, Fail_On_Option) then
-            Fail ("error.option_not_allowed",
-                  [Arg ("option", Spelling (Fail_On_Option)), Arg ("command", Name (Result.Command))]);
-         end if;
+         for Option in Option_Kind loop
+            if Given (Option) and then not Accepts (Result.Command, Option) then
+               Fail ("error.option_not_allowed",
+                     [Arg ("option", Spelling (Option)), Arg ("command", Name (Result.Command))]);
+            end if;
+         end loop;
       end Check_Scope;
 
-      --  Reject a date range the command does not accept or that is empty.
+      --  Reject an empty date range.
       procedure Check_Dates is
       begin
-         if (Has_Since or else Has_Until) and then not Accepts (Result.Command, Since_Option) then
-            Fail ("error.option_not_allowed",
-                  [Arg ("option", Spelling (if Has_Since then Since_Option else Until_Option)),
-                   Arg ("command", Name (Result.Command))]);
-         elsif Result.Since.Present and then Result.Until_Date.Present and then
+         if Result.Since.Present and then Result.Until_Date.Present and then
            Result.Since.Value > Result.Until_Date.Value
          then
             Fail ("error.date_order");
@@ -497,9 +485,9 @@ package body Ada_Quality_Summary.Options is
       procedure Check_Presentation is
          Command : constant String := Name (Result.Command);
       begin
-         if Result.Format /= Terminal_Format and then Has_Width then
+         if Result.Format /= Terminal_Format and then Given (Width_Option) then
             Fail ("error.terminal_only", [Arg ("option", Spelling (Width_Option))]);
-         elsif Result.Format in JSON_Format | SARIF_Format and then Result.Has_Layout then
+         elsif Result.Format in JSON_Format | SARIF_Format and then Given (Layout_Option) then
             Fail ("error.text_only", [Arg ("option", Spelling (Layout_Option))]);
          elsif Result.Format in Terminal_Format | Markdown_Format and then Result.Pretty then
             Fail ("error.json_only", [Arg ("option", Spelling (Pretty_Option))]);
@@ -509,8 +497,6 @@ package body Ada_Quality_Summary.Options is
             Fail ("error.sarif_command", [Arg ("command", Command)]);
          elsif not Allowed (Result.Command, Result.Sort) then
             Fail ("error.sort_not_allowed", [Arg ("value", Image (Result.Sort)), Arg ("command", Command)]);
-         elsif Result.Reverse_Order and then Result.Command = Help_Command then
-            Fail ("error.option_not_allowed", [Arg ("option", Spelling (Reverse_Option)), Arg ("command", Command)]);
          end if;
       end Check_Presentation;
 
@@ -575,6 +561,11 @@ package body Ada_Quality_Summary.Options is
       end Check_Help_Options;
    begin
       Read_Arguments;
+      Result.Has_Database := Given (Database_Option);
+      Result.Has_Color := Given (Color_Option);
+      Result.Has_Layout := Given (Layout_Option);
+      Result.Has_Project := Given (Project_Option);
+      Result.Has_Status := Given (Status_Option);
       if Resolve_Help_And_Version then
          if Result.Command = Help_Command then
             Check_Help_Options;

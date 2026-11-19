@@ -50,6 +50,12 @@ jobs:
         shell: bash
         run: echo "$HOME/.alire/bin" >> "$GITHUB_PATH"
 
+      - name: Refresh the package index
+        run: sudo apt-get update
+      - name: Install zsh and fish
+        # The suite checks that every shell parses its completion script and that fish completes sort keys.
+        run: sudo apt-get install -y --no-install-recommends zsh fish
+
       - name: Build ada_quality_summary
         # Also generates the gitignored config/ada_quality_summary_config.gpr.
         working-directory: ada_quality_summary

@@ -4,7 +4,6 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 with Ada_Quality.Types;
-with Ada_Quality_Summary.Model;
 with Jsonlib.Documents;
 
 package body Ada_Quality_Summary.SARIF is
@@ -45,12 +44,15 @@ package body Ada_Quality_Summary.SARIF is
 
    package Rule_Maps is new Ada.Containers.Ordered_Maps (Indicator_Id, Natural);
 
+   package Name_Maps is new Ada.Containers.Ordered_Maps (Positive, Ada.Strings.Unbounded.Unbounded_String);
+
    function Render
      (Item : Ada_Quality_Summary.Reports.Report; Pretty : Boolean := False;
       Maximum_Bytes : Positive := Ada_Quality_Summary.JSON.Default_Maximum_Bytes) return String
    is
       Doc   : Document;
       Rules : Rule_Maps.Map;
+      Names : Name_Maps.Map;
 
       function Str (Value : String) return Node is (Doc.New_String (Value));
       function Nat (Value : Natural) return Node is (Doc.New_Integer (Long_Long_Integer (Value)));
@@ -121,14 +123,7 @@ package body Ada_Quality_Summary.SARIF is
       end Location_Array;
 
       function Name_Of (Project_Id : Positive) return String is
-      begin
-         for Project of Item.Portfolio.Projects loop
-            if Project.Project_Id = Project_Id then
-               return To_String (Project.Name);
-            end if;
-         end loop;
-         return "";
-      end Name_Of;
+        (if Names.Contains (Project_Id) then To_String (Names.Element (Project_Id)) else "");
 
       function Result_Object (Finding : Finding_Summary) return Node is
          Result       : constant Node := Doc.New_Object;
@@ -188,6 +183,9 @@ package body Ada_Quality_Summary.SARIF is
       Driver  : constant Node := Doc.New_Object;
       Results : constant Node := Doc.New_Array;
    begin
+      for Project of Item.Portfolio.Projects loop
+         Names.Include (Project.Project_Id, Project.Name);
+      end loop;
       Put (Root, "$schema", Str (Schema_URI));
       Put (Root, "version", Str (SARIF_Version));
       Put (Driver, "name", Str ("ada-quality-summary"));

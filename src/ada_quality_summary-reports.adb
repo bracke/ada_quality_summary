@@ -2,6 +2,7 @@ with Ada.Containers.Ordered_Maps;
 with Ada.Strings.Unbounded;
 with Ada_Quality.Indicators;
 with Ada_Quality_Summary.Aggregation;
+with Ada_Quality_Summary.Text;
 with Ada_Quality_Summary.Trends;
 
 package body Ada_Quality_Summary.Reports is
@@ -102,6 +103,11 @@ package body Ada_Quality_Summary.Reports is
                Repository.Resolve_Run (Data, To_String (Invocation.Second)), Item.Pair, Item.Regressions);
             Item.Filter.Project_Id := Item.Pair.Project_Id;
             Item.Project := Build_Project (Data, Repository.Project (Data, Item.Pair.Project_Id));
+            --  A tombstoned project's runs are compared only on request, as its name resolves only on request.
+            if Item.Project.Removed and then not Invocation.Include_Removed then
+               raise Argument_Error with
+                 Text.Message ("error.compare_removed", [Text.Arg ("project", To_String (Item.Project.Name))]);
+            end if;
             Selected.Append (Item.Project);
          else
             for Row of Build_Projects (Data, Filtering.Population (Data, Item.Filter)) loop
@@ -236,7 +242,7 @@ package body Ada_Quality_Summary.Reports is
             for Finding of Aggregation.Findings_Of (Row.Project_Id, Repository.Assessment (Data, Row.Current_Run_Id))
             loop
                if Is_Waiver (Finding) then
-                  Item.Findings.Append (Finding);
+                  Item.Waivers.Append (Finding);
                   Seen (Finding.Indicator) := Seen (Finding.Indicator) + 1;
                end if;
             end loop;
@@ -245,7 +251,7 @@ package body Ada_Quality_Summary.Reports is
                Owners (Id) := Owners (Id) + Natural'Min (1, Seen (Id));
             end loop;
             if (for some Count of Seen => Count > 0) then
-               Item.Finding_Projects := Item.Finding_Projects + 1;
+               Item.Waiver_Projects := Item.Waiver_Projects + 1;
             end if;
          end Add_Project;
       begin
@@ -256,13 +262,14 @@ package body Ada_Quality_Summary.Reports is
          end loop;
          for Id in Indicator_Id loop
             if Counts (Id) > 0 then
-               Item.Groups.Append (Finding_Group'(Indicator => Id, Findings => Counts (Id), Projects => Owners (Id)));
+               Item.Waiver_Groups.Append
+                 (Waiver_Group'(Indicator => Id, Waivers => Counts (Id), Projects => Owners (Id)));
             end if;
          end loop;
-         Item.Finding_Total := Natural (Item.Findings.Length);
-         Filtering.Sort_Findings (Item.Findings, Invocation.Sort, Invocation.Reverse_Order);
-         Item.Row_Count := Item.Finding_Total;
-         Findings_Limit.Limit (Item.Findings, Invocation.Limit);
+         Item.Waiver_Total := Natural (Item.Waivers.Length);
+         Filtering.Sort_Findings (Item.Waivers, Invocation.Sort, Invocation.Reverse_Order);
+         Item.Row_Count := Item.Waiver_Total;
+         Findings_Limit.Limit (Item.Waivers, Invocation.Limit);
       end Fill_Waivers;
 
       --  Compare: the regressions between the two chosen assessments, already classified by Select_Projects.
@@ -326,8 +333,8 @@ package body Ada_Quality_Summary.Reports is
                Item.Gate :=
                  [Gate_Regressions => Item.Regression_Total,
                   Gate_Violations  => (if Current.Has_Quality and then Current.Quality = Violations then 1 else 0),
-                  Gate_Incomplete  => (if Current.Has_Quality and then Current.Quality = Incomplete then 1 else 0),
-                  Gate_Unassessed  => (if Current.Has_Quality then 0 else 1)];
+                  Gate_Incomplete  => (if not Current.Has_Quality or else Current.Quality = Incomplete then 1 else 0),
+                  Gate_Unassessed  => 0];
             end;
             return;
          end if;

@@ -35,10 +35,13 @@
               "indicator_id": {
                 "$ref": "common.schema.json#/$defs/indicator_id"
               },
-              "target": {
+              "rule": {
                 "type": "string"
               },
-              "justification": {
+              "severity": {
+                "$ref": "common.schema.json#/$defs/severity"
+              },
+              "message": {
                 "type": "string"
               },
               "relative_path": {
@@ -57,17 +60,26 @@
               "fingerprint": {
                 "type": "string",
                 "minLength": 1
+              },
+              "target": {
+                "type": "string"
+              },
+              "justification": {
+                "type": "string"
               }
             },
             "required": [
               "project_id",
               "run_id",
               "indicator_id",
-              "target",
-              "justification",
+              "rule",
+              "severity",
+              "message",
               "relative_path",
               "line",
-              "fingerprint"
+              "fingerprint",
+              "target",
+              "justification"
             ],
             "additionalProperties": false
           }

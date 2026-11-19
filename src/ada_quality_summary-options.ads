@@ -137,7 +137,11 @@ package Ada_Quality_Summary.Options is
    --  @return Text such as `--database PATH`.
 
    function Accepts (Command : Command_Kind; Option : Option_Kind) return Boolean;
-   --  Test whether a command accepts an option; the parser and the help text both apply this one rule.
+   --  Test whether a command accepts an option; the parser and the help text both apply this one rule. Every
+   --  command accepts `--help` and `--version`; report commands accept the database, output, `--include-removed`,
+   --  `--reverse`, `--limit`, and `--fail-on` options; collection commands add `--project`, `--status`, and
+   --  `--enabled-only`; `trends` and `history` add the dates; `--sort` needs a key the command supports. `help`
+   --  and `completion` accept nothing else.
    --  @param Command Command.
    --  @param Option Option.
    --  @return True when the option is allowed with the command.

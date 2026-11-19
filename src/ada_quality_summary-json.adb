@@ -438,36 +438,31 @@ package body Ada_Quality_Summary.JSON is
          Groups  : constant Node := Doc.New_Array;
          Totals  : constant Node := Doc.New_Object;
       begin
-         for Finding of Item.Findings loop
+         for Finding of Item.Waivers loop
             declare
-               Object  : constant Node := Doc.New_Object;
+               --  A waiver is its finding with the message split into target and justification.
+               Object  : constant Node := Finding_Object (Finding);
                Message : constant String := To_String (Finding.Message);
             begin
-               Put (Object, "project_id", Nat (Finding.Project_Id));
-               Put (Object, "run_id", Nat (Finding.Run_Id));
-               Put (Object, "indicator_id", Str (Image (Finding.Indicator)));
                Put (Object, "target", Str (Waiver_Target (Message)));
                Put (Object, "justification", Str (Waiver_Justification (Message)));
-               Put (Object, "relative_path", (if Length (Finding.Path) = 0 then Null_Value else Str (Finding.Path)));
-               Put (Object, "line", (if Finding.Line = 0 then Null_Value else Nat (Finding.Line)));
-               Put (Object, "fingerprint", Str (Finding.Fingerprint));
                Doc.Append (Waivers, Object);
             end;
          end loop;
          Put (Data, "waivers", Waivers);
-         for Group of Item.Groups loop
+         for Group of Item.Waiver_Groups loop
             declare
                Object : constant Node := Doc.New_Object;
             begin
                Put (Object, "indicator_id", Str (Image (Group.Indicator)));
-               Put (Object, "waivers", Nat (Group.Findings));
+               Put (Object, "waivers", Nat (Group.Waivers));
                Put (Object, "projects", Nat (Group.Projects));
                Doc.Append (Groups, Object);
             end;
          end loop;
          Put (Data, "by_indicator", Groups);
-         Put (Totals, "waivers", Nat (Item.Finding_Total));
-         Put (Totals, "projects", Nat (Item.Finding_Projects));
+         Put (Totals, "waivers", Nat (Item.Waiver_Total));
+         Put (Totals, "projects", Nat (Item.Waiver_Projects));
          Put (Data, "totals", Totals);
          return Data;
       end Waivers_Data;

@@ -60,8 +60,8 @@ envelope examples show 2, the schema before the timestamp migration that the spe
   `baseline_run_id`, `comparison` (the `Ada_Quality.History.Select_Comparison` decision: `comparison_available`,
   `no_assessments`, `no_baseline`, `current_incomplete`, `no_completed_baseline`, `toolchain_changed`,
   `no_compatible_baseline`), `policy_changed`, and `excluded_runs` with `run_id` and `reason`.
-- **waiver**: `project_id`, `run_id`, `indicator_id`, `target`, `justification`, `relative_path`, `line`,
-  `fingerprint`; `target` is empty and `justification` is the whole message when a waiver message has no fields.
+- **waiver**: the waiver's finding (every finding member) followed by `target` and `justification`; `target` is empty
+  and `justification` is the whole message when a waiver message has no fields.
 - **compare**: `baseline` and `current` are runs; `comparison` is the `Ada_Quality.Reporting.Compare_Assessments`
   decision, `incompatibility` (`missing_source_fingerprint`, `policy_changed`, `toolchain_changed`, or `null`) says
   why two completed runs are not comparable, and `regressions` is empty unless `comparison` is

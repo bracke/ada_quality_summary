@@ -1,4 +1,5 @@
 with Ada_Quality_Summary.JSON;
+with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Reports;
 
 --  SARIF 2.1.0 serialization of the problems report, for code-scanning tools such as GitHub code scanning.
@@ -15,8 +16,9 @@ package Ada_Quality_Summary.SARIF is
 
    function Render
      (Item : Ada_Quality_Summary.Reports.Report; Pretty : Boolean := False;
-      Maximum_Bytes : Positive := Ada_Quality_Summary.JSON.Default_Maximum_Bytes) return String;
-   --  Serialize the findings of a problems report as a SARIF log with one run.
+      Maximum_Bytes : Positive := Ada_Quality_Summary.JSON.Default_Maximum_Bytes) return String
+   with Pre => Ada_Quality_Summary.Model."=" (Item.Metadata.Kind, Ada_Quality_Summary.Model.Problems_Report);
+   --  Serialize the findings of a problems report as a SARIF log with one run; other reports have no SARIF form.
    --  @param Item Problems report data.
    --  @param Pretty Whether to indent.
    --  @param Maximum_Bytes Size limit.

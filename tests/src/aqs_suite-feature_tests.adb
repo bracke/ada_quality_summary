@@ -98,6 +98,9 @@ package body Feature_Tests is
       Expect_Equal (Field ("compare|3|4", "regressions[0].kind"), Q ("policy_induced_change"), "policy-induced");
       Expect_Equal (Field ("compare|1|5", "comparison"), Q ("current_incomplete"), "an interrupted current run");
       Expect_Equal (Field ("compare|1|5", "current.state"), Q ("interrupted"), "keeps its state");
+      Expect (Contains (Errors (Report (Database, "compare|1|5|--fail-on|incomplete,unassessed")),
+                        "quality gate failed: incomplete (1)" & LF),
+              "an unfinished current run is incomplete, never unassessed");
       Validates (Json (Database, "compare|1|5"), "compare");
       Expect_Equal (Column (Json (Database, "compare|1|2|--sort|kind|--reverse"), "data.regressions", "kind"),
                     Q ("introduced_finding") & "," & Q ("new_violation"), "--sort kind --reverse");
@@ -119,6 +122,18 @@ package body Feature_Tests is
       Expect (Code_Of (Database, "compare|1|2|3") = 2, "and no more");
       Expect (Code_Of (Database, "compare|1|2|--sort|name") = 2, "compare sorts by indicator or kind only");
       Expect (Code_Of (Database, "compare|1|2|--project|one") = 2, "compare is not a collection report");
+      declare
+         Gone  : constant Positive := Register (Database, Parent (Database), "gone");
+         First : constant Positive := Publish (Database, Build (Gone, Shape));
+         Last  : constant Positive := Publish (Database, Build (Gone, Shape ("DOC-01")));
+         Pair  : constant String := "compare|" & Image (First) & "|" & Image (Last);
+      begin
+         Remove (Database, Gone);
+         Expect (Contains (Errors (Report (Database, Pair)), "--include-removed"),
+                 "a removed project's runs are compared only on request");
+         Expect_Equal (Value (Json (Database, Pair & "|--include-removed"), "data.project.removed"), "true",
+                       "and then reported as removed");
+      end;
    end Explicit_Comparison;
 
    procedure Markdown_Output is
@@ -288,22 +303,55 @@ package body Feature_Tests is
    end Waiver_Report;
 
    procedure Shell_Completion is
-      Shells : constant Text_List := [new String'("bash"), new String'("zsh"), new String'("fish")];
-      Script : constant String := Absolute (Dir ("completion")) & "/script.bash";
-      Bash   : constant String := Project_Tools.Processes.Locate_Command ("bash");
+      Shells  : constant Text_List := [new String'("bash"), new String'("zsh"), new String'("fish")];
+      Scripts : constant String := Absolute (Dir ("completion"));
 
-      function Complete (Words : String; Current : Natural) return String is
-        (To_String (Project_Tools.Processes.Capture_Command
-           (Bash, Project_Tools.Processes.Arguments
-              ([Project_Tools.Processes.Argument ("-c"),
-                Project_Tools.Processes.Argument
-                  ("source " & Script & "; COMP_WORDS=(" & Words & "); COMP_CWORD=" & Image (Current) &
-                   "; _ada_quality_summary; echo ""${COMPREPLY[*]}""")]), Err_To_Out => True).Output));
+      function Script_Of (Shell : String) return String is (Scripts & "/script." & Shell);
+
+      --  Run Code with a shell, or return Absent when the shell is not installed.
+      function Shell_Run (Shell, Code : String; Status : out Integer) return String is
+         Program : constant String := Project_Tools.Processes.Locate_Command (Shell);
+      begin
+         Status := -1;
+         if Program = "" then
+            return Absent;
+         end if;
+         declare
+            Result : constant Project_Tools.Processes.Captured_Process :=
+              Project_Tools.Processes.Capture_Command
+                (Program, Project_Tools.Processes.Arguments
+                   ([Project_Tools.Processes.Argument ("-c"), Project_Tools.Processes.Argument (Code)]),
+                 Err_To_Out => True);
+         begin
+            Status := Result.Status;
+            return To_String (Result.Output);
+         end;
+      end Shell_Run;
+
+      --  The candidates the bash script offers for the last of Words, without the final line feed.
+      function Complete (Words : String) return String is
+         Status : Integer;
+      begin
+         return Shell_Run
+           ("bash", "source " & Script_Of ("bash") & "; COMP_WORDS=(ada-quality-summary " & Words &
+              "); COMP_CWORD=$((${#COMP_WORDS[@]} - 1)); _ada_quality_summary; echo ""${COMPREPLY[*]}""", Status);
+      end Complete;
+
+      --  Whether a shell parses its script, or True when the shell is not installed.
+      function Parses (Shell, Check : String) return Boolean is
+         Status : Integer;
+         Text   : constant String := Shell_Run (Shell, Check & " " & Script_Of (Shell), Status);
+      begin
+         return Text = Absent or else Status = 0;
+      end Parses;
+
+      Status : Integer;
    begin
       for Shell of Shells loop
          declare
             Text : constant String := Output (Run ("completion " & Shell.all));
          begin
+            Project_Tools.Files.Write_Text_File (Script_Of (Shell.all), Text);
             for Option in Ada_Quality_Summary.Options.Option_Kind loop
                declare
                   Spelling : constant String := Ada_Quality_Summary.Options.Spelling (Option);
@@ -318,17 +366,43 @@ package body Feature_Tests is
                        Shell.all & " completes " & Ada_Quality_Summary.Options.Name (Command));
             end loop;
             Expect (Contains (Text, "terminal json markdown sarif"), Shell.all & " completes format choices");
+            Expect (Contains (Text, Ada_Quality_Summary.Completion.Sort_Keys
+                                      (Ada_Quality_Summary.Options.Waivers_Command)),
+                    Shell.all & " completes sort keys per command");
          end;
       end loop;
-      Project_Tools.Files.Write_Text_File (Script, Output (Run ("completion bash")));
-      Expect_Equal (Complete ("ada-quality-summary --format m", 2), "markdown", "bash completes a choice");
-      Expect_Equal (Complete ("ada-quality-summary wai", 1), "waivers", "bash completes a command");
-      Expect_Equal (Complete ("ada-quality-summary --fail", 1), "--fail-on", "bash completes an option");
+      --  Each installed shell parses its script; CI installs all three.
+      Expect (Parses ("bash", "bash -n"), "bash parses its script");
+      Expect (Parses ("zsh", "zsh -n"), "zsh parses its script");
+      Expect (Parses ("fish", "fish --no-execute"), "fish parses its script");
+      if Complete ("") /= Absent then
+         Expect_Equal (Complete ("--format m"), "markdown", "bash completes a choice");
+         Expect_Equal (Complete ("wai"), "waivers", "bash completes a command");
+         Expect_Equal (Complete ("--fail"), "--fail-on", "bash completes an option");
+         Expect_Equal (Complete ("waivers --sort ''"), "indicator project", "bash offers the command's sort keys");
+         Expect_Equal (Complete ("--database x.db compare 1 2 --sort ''"), "indicator kind",
+                       "an option value is not taken for the command");
+         Expect_Equal (Complete ("--sort ''"), "name id quality violations", "without a command, summary's keys");
+      end if;
+      declare
+         Candidates : constant String :=
+           Shell_Run ("fish", "source " & Script_Of ("fish") &
+                        "; complete -C 'ada-quality-summary waivers --sort '", Status);
+      begin
+         Expect (Candidates = Absent or else
+                   (Contains (Candidates, "indicator") and then not Contains (Candidates, "quality")),
+                 "fish offers the command's sort keys: " & Candidates);
+      end;
       Expect_Equal (Ada_Quality_Summary.Completion.Choices (Ada_Quality_Summary.Options.Fail_On_Option),
                     "regressions violations incomplete unassessed", "gate conditions");
+      Expect_Equal (Ada_Quality_Summary.Completion.Sort_Keys (Ada_Quality_Summary.Options.Help_Command), "",
+                    "help has no sort keys");
       Expect (Exit_Of (Run ("completion tcsh")) = 2, "an unknown shell is an argument error");
       Expect (Exit_Of (Run ("completion")) = 2, "completion requires a shell");
       Expect (Exit_Of (Run ("completion bash zsh")) = 2, "and only one");
+      Expect (Exit_Of (Run ("completion bash --limit 5")) = 2, "completion accepts no report option");
+      Expect (Exit_Of (Run ("help --format json")) = 2, "nor does help itself");
+      Expect (not Contains (Output (Run ("help completion")), "--database"), "and help says so");
       --  The committed manual page is the generated one and documents every command and option.
       declare
          Page : constant String := Aqs_Manual.Page;

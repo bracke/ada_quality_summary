@@ -50,7 +50,7 @@ same findings remain in `problems`.
 | `--layout compact\|normal\|detailed` | terminal, Markdown | Layout; rejected with JSON and SARIF. |
 | `--width N` | terminal | Display width, 20–500; rejected with every other format. |
 | `--include-removed` | reports | Include tombstoned projects. |
-| `--enabled-only` | reports | Include only enabled projects. |
+| `--enabled-only` | collection commands | Include only enabled projects. |
 | `--project PROJECT` | collection commands | Restrict to one project. |
 | `--status STATUS` | collection commands | `passing`, `violations`, `incomplete`, or `unassessed`. |
 | `--sort KEY` | command-specific | See below. |
@@ -65,6 +65,10 @@ same findings remain in `problems`.
 
 Collection commands are `summary`, `projects`, `indicators`, `indicator`, `problems`, `waivers`, `regressions`, and
 `trends`.
+
+`help`, `completion`, and `--version` accept no report option, and `--enabled-only` is a collection option.
+`compare` accepts `--include-removed`, which is required when the compared runs belong to a removed project, as it is
+for naming a removed project.
 
 Unknown options, duplicate scalar options (including `--color` with `--no-color`), missing values, unsupported sort
 keys, invalid dates, `--since` later than `--until`, and options used outside their scope are argument errors.
@@ -110,8 +114,8 @@ with status 1.
 | --------- | ---------- |
 | `regressions` | A selected project's current assessment regressed against the baseline Ada Quality selects; for `compare`, the compared pair regressed. |
 | `violations` | A selected project's current assessment violates an indicator; for `compare`, the current assessment does. |
-| `incomplete` | A selected project's current assessment has unknown results; for `compare`, the current assessment has. |
-| `unassessed` | A selected project has no completed assessment; for `compare`, the current run did not complete. |
+| `incomplete` | A selected project's current assessment has unknown results; for `compare`, the current run has unknown results or did not complete. |
+| `unassessed` | A selected project has no completed assessment; never for `compare`, whose runs are chosen. |
 
 The conditions apply to the selected population, after `--project`, `--status`, `--enabled-only`, and
 `--include-removed` and before `--limit`, whatever the report shows: `problems --fail-on regressions` compares every
@@ -125,7 +129,8 @@ ada-quality-summary regressions --format markdown --fail-on regressions >> "$GIT
 ## Shell completion and manual page
 
 `completion bash`, `completion zsh`, and `completion fish` print completion scripts generated from the same command
-and option tables as the parser, so they always offer the accepted commands, options, and fixed values:
+and option tables as the parser, so they always offer the accepted commands, options, and fixed values, and after
+`--sort` only the keys of the command being typed:
 
 ```sh
 ada-quality-summary completion bash > ~/.local/share/bash-completion/completions/ada-quality-summary

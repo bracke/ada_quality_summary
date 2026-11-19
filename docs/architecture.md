@@ -59,6 +59,7 @@ computation error never leaves partial JSON on standard output.
 | `.Terminal.Environment` | Terminal detection, width, color policy, and locale, through `hostkit`. |
 | `.Terminal.Cells` | Display-cell measurement, truncation, and padding. |
 | `.Terminal.Output` | Private: the width-bounded output buffer, fields, notes, and tables, or their Markdown forms. |
+| `.Terminal.Sections` | Private: labels, roles, project names, and the sections several report layouts share. |
 | `.JSON` | Versioned JSON envelope and report-specific data objects; the shared size-checked serializer. |
 | `.SARIF` | SARIF 2.1.0 log of the problems report. |
 | `.Completion` | Shell completion scripts generated from the command and option tables. |

@@ -46,6 +46,8 @@ package body Ada_Quality_Summary.Text is
      "en.error.unknown_assessment = unknown assessment {reference}; expected a run ID or an assessment alias" & LF &
      "en.error.compare_projects = the compared assessments belong to different projects" & LF &
      "en.error.compare_order = the baseline assessment must be older than the current assessment" & LF &
+     "en.error.compare_removed = the compared assessments belong to removed project {project}; add" &
+       " --include-removed" & LF &
      --  Runtime diagnostics.
      "en.error.prefix = ada-quality-summary: {message}" & LF &
      "en.error.hint = run ada-quality-summary help for usage" & LF &
@@ -249,7 +251,18 @@ package body Ada_Quality_Summary.Text is
        " (comma-separated)" & LF &
      "en.help.opt.help = Show help" & LF &
      "en.help.opt.version = Show the version" & LF &
-     "en.help.version = ada-quality-summary {version}" & LF;
+     "en.help.version = ada-quality-summary {version}" & LF &
+     --  Manual page.
+     "en.manual.name = read-only reporting over Ada Quality assessments" & LF &
+     "en.manual.description = ada-quality-summary presents the persisted quality status of the projects" &
+       " registered with Ada Quality: a portfolio overview, project and indicator reports, outstanding findings," &
+       " review waivers, regressions, comparisons of chosen assessments, and historical trends, as terminal" &
+       " tables, Markdown, versioned JSON, or SARIF. It reads one coherent snapshot of the assessment database and" &
+       " never runs measurements or modifies the database." & LF &
+     "en.manual.env.ada_quality_database = Database path used when --database is not given; without either," &
+       " .ada-quality.db in the current directory." & LF &
+     "en.manual.env.no_color = Disables color when --color is auto." & LF &
+     "en.manual.env.columns = Display width when standard output is not a terminal." & LF;
 
    package Key_Sets is new Ada.Containers.Indefinite_Ordered_Sets (Element_Type => String);
 

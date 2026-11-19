@@ -20,7 +20,7 @@ with Ada_Quality_Summary.Repository;
 --  | indicators  | Indicators                                                                                   |
 --  | indicator   | Indicator, Indicator_Rows                                                                    |
 --  | problems    | Findings and counts, Groups                                                                  |
---  | waivers     | Findings (waiver findings only) and their counts, Groups                                     |
+--  | waivers     | Waivers, Waiver_Total, Waiver_Projects, Waiver_Groups                                        |
 --  | regressions | Regressions and counts, Baselines, Comparisons                                               |
 --  | compare     | Project, Pair, Regressions and counts                                                        |
 --  | trends      | Series, Excluded_Observations, Daily, Undated, Since, Until_Date                             |
@@ -49,6 +49,20 @@ package Ada_Quality_Summary.Reports is
      (Index_Type => Positive, Element_Type => Finding_Group);
    --  Groups in registry order.
 
+   type Waiver_Group is record
+      Indicator : Ada_Quality.Types.Indicator_Id;
+      Waivers   : Natural := 0;
+      Projects  : Natural := 0;
+   end record;
+   --  Review waivers of one indicator.
+   --  @field Indicator Waived indicator.
+   --  @field Waivers Waiver findings.
+   --  @field Projects Projects with at least one waiver of the indicator.
+
+   package Waiver_Group_Vectors is new Ada.Containers.Vectors
+     (Index_Type => Positive, Element_Type => Waiver_Group);
+   --  Waiver groups in registry order.
+
    type Kind_Counts is array (Ada_Quality.History.Regression_Kind) of Natural;
    --  Regressions per classification.
 
@@ -71,6 +85,10 @@ package Ada_Quality_Summary.Reports is
       Finding_Projects  : Natural := 0;
       By_Severity       : Severity_Counts := [others => 0];
       Groups            : Finding_Group_Vectors.Vector;
+      Waivers           : Ada_Quality_Summary.Model.Finding_Summary_Vectors.Vector;
+      Waiver_Total      : Natural := 0;
+      Waiver_Projects   : Natural := 0;
+      Waiver_Groups     : Waiver_Group_Vectors.Vector;
       Regressions       : Ada_Quality_Summary.Model.Regression_Summary_Vectors.Vector;
       Regression_Total  : Natural := 0;
       By_Kind           : Kind_Counts := [others => 0];
@@ -110,6 +128,10 @@ package Ada_Quality_Summary.Reports is
    --  @field Finding_Projects Projects with findings.
    --  @field By_Severity Findings per severity.
    --  @field Groups Findings per indicator.
+   --  @field Waivers Review-waiver findings (after limit).
+   --  @field Waiver_Total Waivers before the limit.
+   --  @field Waiver_Projects Projects with waivers.
+   --  @field Waiver_Groups Waivers per indicator.
    --  @field Regressions Regressions (after limit).
    --  @field Regression_Total Regressions before the limit.
    --  @field By_Kind Regressions per classification.
@@ -128,10 +150,11 @@ package Ada_Quality_Summary.Reports is
    --  @field Undated Runs or observations without timestamps excluded by a date filter.
    --  @field Since First included UTC day.
    --  @field Until_Date Last included UTC day.
-   --  @field Gate How often each `--fail-on` condition holds: regressions of the compared projects (or of the
-   --  compared pair), and selected projects that have violations, are incomplete, or are unassessed (for compare, the
-   --  current assessment of the pair). Regressions are counted only when they were compared, which `--fail-on
-   --  regressions` requests.
+   --  @field Gate How often each `--fail-on` condition holds: regressions of the compared projects, and selected
+   --  projects that have violations, are incomplete, or are unassessed. For compare: the pair's regressions, and
+   --  whether its current run has violations or is incomplete, which a run that did not complete is; a chosen run is
+   --  never unassessed. Regressions are counted only when they were compared, which `--fail-on regressions`
+   --  requests.
 
    function Build
      (Data : Ada_Quality_Summary.Repository.Snapshot; Invocation : Ada_Quality_Summary.Options.Options;

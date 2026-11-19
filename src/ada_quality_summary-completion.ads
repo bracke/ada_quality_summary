@@ -11,7 +11,13 @@ package Ada_Quality_Summary.Completion is
    function Choices (Option : Ada_Quality_Summary.Options.Option_Kind) return String;
    --  Return the fixed values an option accepts.
    --  @param Option Option.
-   --  @return Space-separated values, or empty when the value is free text or the option is a flag.
+   --  @return Space-separated values, or empty when the value is free text or the option is a flag; for `--sort`,
+   --  every key of any command.
+
+   function Sort_Keys (Command : Ada_Quality_Summary.Options.Command_Kind) return String;
+   --  Return the sort keys a command accepts, which the scripts offer after `--sort` for that command.
+   --  @param Command Command.
+   --  @return Space-separated keys, or empty when the command does not sort.
 
    function Script (Shell : Ada_Quality_Summary.Options.Shell_Kind) return String;
    --  Return the completion script for a shell.

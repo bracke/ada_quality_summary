@@ -77,8 +77,11 @@ Feature cases cover the additions:
   roots, waivers suppressed in source, and rejection with any command but `problems`.
 - **Waivers**: counts per indicator and project, target and justification parsing, both orders, filters, limits,
   and the empty report.
-- **Completion and manual**: every option and command in each shell's script, bash completing a choice, a command,
-  and an option when sourced, and the committed manual page equal to the generated one.
+- **Completion and manual**: every option, command, and per-command sort-key list in each shell's script; bash,
+  zsh, and fish parsing their scripts; bash completing a choice, a command, an option, and each command's sort keys
+  when sourced, and fish completing sort keys; the committed manual page equal to the generated one. A shell that is
+  not installed is skipped; CI installs zsh and fish, so all three run there.
+- **Option scope**: `help` and `completion` accept no report option, and help lists only what a command accepts.
 
 Every report, including `waivers` and `compare`, takes part in the schema, round-trip, layout-width, read-only, and
 no-tools cases, and those cases also run with `--format markdown`.

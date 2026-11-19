@@ -81,8 +81,8 @@ waivers. The findings stay in `problems` and in its SARIF output, where each is 
 before `--limit`: regressions are the regressions of the selected projects' current assessments against their
 baselines (comparing every selected project when `regressions` is requested), and `violations`, `incomplete`, and
 `unassessed` count selected projects by classification. For `compare` they apply to the compared pair: its
-regressions and the classification of its current run, which counts as unassessed when it did not complete. The
-gate never changes the report.
+regressions and the classification of its current run, which counts as incomplete when it did not complete; a chosen
+run is never unassessed. The gate never changes the report.
 
 ## Trends
 
