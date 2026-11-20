@@ -2,6 +2,7 @@ with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Vectors;
 with Ada.Finalization;
 with Ada.Strings.Unbounded;
+with Ada_Quality.History;
 with Ada_Quality.Reporting;
 with Ada_Quality.Storage;
 with Ada_Quality.Types;
@@ -10,10 +11,11 @@ with Ada_Quality_Summary.Model;
 
 --  Coherent, read-only, in-memory database snapshot for one report invocation.
 --
---  Load reads every required row in one read transaction through Ada_Quality.Reporting and releases the
---  database before returning. A Snapshot never holds a database handle, cursor, or lock; every query below is a
---  pure function of the loaded data. Facts memoizes the per-run summaries derived from that data, so each completed
---  assessment is decoded at most once per snapshot however many reports, days, or series consult it.
+--  Load reads every row in one read transaction through Ada_Quality.Reporting and releases the database before
+--  returning. A Snapshot never holds a database handle, cursor, or lock; every query below is a pure function of the
+--  loaded data. Load indexes only projects and runs; everything a report derives from them (decoded current
+--  assessments, run facts, project histories, and measurement rows grouped by indicator) is built on first use and
+--  kept, so a report that needs one project pays for one project, and nothing is decoded or grouped twice.
 package Ada_Quality_Summary.Repository is
    --  Coherent, read-only, in-memory database snapshot for one report invocation.
    subtype UString is Ada.Strings.Unbounded.Unbounded_String;
@@ -47,8 +49,8 @@ package Ada_Quality_Summary.Repository is
    --  @param Item Repository.
 
    function Load (Item : in out Repository) return Snapshot;
-   --  Load one coherent snapshot and decode every current completed assessment. While a writer holds the
-   --  database, Load retries in an orderly way until the busy deadline expires.
+   --  Load one coherent snapshot and index its projects and runs. While a writer holds the database, Load retries in
+   --  an orderly way until the busy deadline expires.
    --  @param Item Opened repository.
    --  @return Snapshot.
    --  @exception Data_Error The database is missing, locked, unsupported, or corrupt.
@@ -105,6 +107,16 @@ package Ada_Quality_Summary.Repository is
    --  @param Data Snapshot.
    --  @param Run_Id Completed run identity.
    --  @return Decoded assessment.
+   --  @exception Data_Error Stored evidence is corrupt.
+
+   procedure Visit_Assessment
+     (Data    : Snapshot;
+      Run_Id  : Positive;
+      Process : not null access procedure (Value : Ada_Quality.Reporting.Assessment_Record));
+   --  Pass a decoded completed assessment to Process without copying it; current assessments are decoded once.
+   --  @param Data Snapshot.
+   --  @param Run_Id Completed run identity.
+   --  @param Process Callback; it must not query Data for another assessment while it runs.
    --  @exception Data_Error Stored evidence is corrupt.
 
    function Result_Of
@@ -195,11 +207,16 @@ package Ada_Quality_Summary.Repository is
    --  @return Compatibility decision and regressions.
    --  @exception Data_Error Stored evidence is corrupt.
 
-   function Measurements (Data : Snapshot; Project_Id : Positive) return Ada_Quality.Storage.Detail_Vectors.Vector;
-   --  Return measurement rows of a project's completed runs for Ada_Quality.History.Metric_Trend.
+   function Metric_Trend
+     (Data : Snapshot; Project_Id : Positive; Indicator : Ada_Quality.Types.Indicator_Id)
+      return Ada_Quality.History.Trend_Vectors.Vector;
+   --  Return Ada_Quality.History.Metric_Trend of a project's completed runs for one indicator. The project's
+   --  measurement rows are read once and grouped by indicator, so each series considers only its own rows.
    --  @param Data Snapshot.
    --  @param Project_Id Project identity.
-   --  @return Measurement rows.
+   --  @param Indicator Numeric indicator.
+   --  @return Points in ascending run order.
+   --  @exception Data_Error Stored evidence is corrupt.
 
 private
    type Repository is limited record
@@ -227,39 +244,42 @@ private
 
    package Fact_Maps is new Ada.Containers.Ordered_Maps (Key_Type => Positive, Element_Type => Run_Facts);
 
-   type Fact_Store is record
-      Map : Fact_Maps.Map;
-   end record;
-
-   type Fact_Store_Access is access Fact_Store;
-
-   --  Memo of derived facts; a snapshot is read through `in` parameters, so the memo lives behind an access value.
-   type Fact_Cache is new Ada.Finalization.Limited_Controlled with record
-      Store : Fact_Store_Access := new Fact_Store;
-   end record;
-
-   overriding procedure Finalize (Item : in out Fact_Cache);
-   --  Release the memo with its snapshot.
-   --  @param Item Memo.
-
    package History_Maps is new Ada.Containers.Ordered_Maps
      (Key_Type => Positive, Element_Type => Ada_Quality.Storage.History_Vectors.Vector,
       "=" => Ada_Quality.Storage.History_Vectors."=");
 
-   package Detail_List_Maps is new Ada.Containers.Ordered_Maps
-     (Key_Type => Positive, Element_Type => Ada_Quality.Storage.Detail_Vectors.Vector,
-      "=" => Ada_Quality.Storage.Detail_Vectors."=");
+   type Indicator_Details is array (Ada_Quality.Types.Indicator_Id) of Ada_Quality.Storage.Detail_Vectors.Vector;
+
+   package Detail_Group_Maps is new Ada.Containers.Ordered_Maps
+     (Key_Type => Positive, Element_Type => Indicator_Details);
+
+   type Memo_Store is record
+      Facts     : Fact_Maps.Map;
+      Decoded   : Assessment_Maps.Map;
+      Histories : History_Maps.Map;
+      Completed : History_Maps.Map;
+      Measures  : Detail_Group_Maps.Map;
+   end record;
+
+   type Memo_Store_Access is access Memo_Store;
+
+   --  Everything derived on first use; a snapshot is read through `in` parameters, so the memo lives behind an access
+   --  value.
+   type Memo is new Ada.Finalization.Limited_Controlled with record
+      Store : Memo_Store_Access := new Memo_Store;
+   end record;
+
+   overriding procedure Finalize (Item : in out Memo);
+   --  Release the memo with its snapshot.
+   --  @param Item Memo.
 
    type Snapshot is limited record
       Session      : Ada_Quality.Reporting.Session;
       Project_Map  : Project_Maps.Map;
       Run_Map      : Run_Maps.Map;
       Project_Runs : Id_List_Maps.Map;
-      Histories    : History_Maps.Map;
-      Measures     : Detail_List_Maps.Map;
       Current      : Id_Maps.Map;
       Latest       : Id_Maps.Map;
-      Decoded      : Assessment_Maps.Map;
-      Fact_Memo    : Fact_Cache;
+      Derived      : Memo;
    end record;
 end Ada_Quality_Summary.Repository;

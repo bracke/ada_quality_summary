@@ -112,12 +112,30 @@ package body Ada_Quality_Summary.Filtering is
       Less_Base : not null access function (Left, Right : Element_Type) return Boolean;
       Reverse_Order : Boolean)
    is
-      --  Every Less_Base is a strict total order ending in unique identities, so an unstable sort is deterministic.
-      function Less (Left, Right : Element_Type) return Boolean is
-        (if Reverse_Order then Less_Base (Left => Right, Right => Left) else Less_Base (Left, Right));
-      package Sorting is new Vectors.Generic_Sorting ("<" => Less);
+      --  Rows hold several strings, so the sort moves their positions and compares the rows in place; each row is
+      --  then copied once into its final place. Every Less_Base is a strict total order ending in unique identities,
+      --  so an unstable sort is deterministic.
+      package Position_Vectors is new Ada.Containers.Vectors (Positive, Positive);
+
+      function Less (Left, Right : Positive) return Boolean is
+        (if Reverse_Order then Less_Base (Items.Constant_Reference (Right), Items.Constant_Reference (Left))
+         else Less_Base (Items.Constant_Reference (Left), Items.Constant_Reference (Right)));
+
+      package Sorting is new Position_Vectors.Generic_Sorting ("<" => Less);
+
+      Order  : Position_Vectors.Vector;
+      Sorted : Vectors.Vector;
    begin
-      Sorting.Sort (Items);
+      Order.Reserve_Capacity (Items.Length);
+      for Position in Items.First_Index .. Items.Last_Index loop
+         Order.Append (Position);
+      end loop;
+      Sorting.Sort (Order);
+      Sorted.Reserve_Capacity (Items.Length);
+      for Position of Order loop
+         Sorted.Append (Items.Constant_Reference (Position));
+      end loop;
+      Items.Move (Sorted);
    end Ordered_Sort;
 
    procedure Sort_Project_Rows is new Ordered_Sort (Project_Summary, Model.Project_Vectors);

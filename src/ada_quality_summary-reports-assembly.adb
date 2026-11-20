@@ -1,5 +1,4 @@
 with Ada.Strings.Unbounded;
-with Ada_Quality.Indicators;
 with Ada_Quality.Types;
 with Ada_Quality_Summary.Aggregation;
 with Ada_Quality_Summary.Criteria;
@@ -104,8 +103,8 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Select the reported projects: the target of a detail command, or the filtered population.
    procedure Select_Projects (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
    begin
       if Invocation.Command in Project_Command | History_Command then
          declare
@@ -139,9 +138,9 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Compare each selected project with its baseline once, for the reports that show regressions or their counts.
    procedure Compare_Selected (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
-   Compared : Comparison_Maps.Map renames State.Compared;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
+      Compared : Comparison_Maps.Map renames State.Compared;
    begin
       if Invocation.Command = Compare_Command or else
         (Invocation.Command not in Summary_Command | Projects_Command | Project_Command | History_Command |
@@ -166,9 +165,9 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Summary and projects: sorted, limited rows; the summary adds indicators, finding counts, and regressions.
    procedure Fill_Overview (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
-   Compared : Comparison_Maps.Map renames State.Compared;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
+      Compared : Comparison_Maps.Map renames State.Compared;
    begin
       Filtering.Sort_Projects
         (Item.Portfolio.Projects, Invocation.Sort, Invocation.Command = Summary_Command,
@@ -190,9 +189,9 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Project: the current assessment, its findings, and its regressions.
    procedure Fill_Project (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
-   Compared : Comparison_Maps.Map renames State.Compared;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
+      Compared : Comparison_Maps.Map renames State.Compared;
    begin
       if Item.Project.Current_Run_Id /= 0 then
          Item.Has_Assessment := True;
@@ -209,8 +208,8 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Indicators: one aggregate per indicator.
    procedure Fill_Indicators (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
    begin
       Item.Indicators := Build_Indicators (Data, Selected);
       Filtering.Sort_Indicators (Item.Indicators, Invocation.Sort, Invocation.Reverse_Order);
@@ -220,8 +219,8 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Indicator: the aggregate and one row per selected project.
    procedure Fill_Indicator (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
       Id : constant Indicator_Id := Filtering.Resolve_Indicator (To_String (Invocation.Indicator));
    begin
       Item.Indicator := Build_Indicator (Data, Selected, Id);
@@ -242,8 +241,8 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Problems: every finding of the selected current assessments.
    procedure Fill_Problems (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
    begin
       Item.Findings := Build_Findings (Data, Selected);
       Count_Findings (Item, Data, Selected);
@@ -254,9 +253,9 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Regressions: every regression of the selected projects.
    procedure Fill_Regressions (Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
-   Compared : Comparison_Maps.Map renames State.Compared;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
+      Compared : Comparison_Maps.Map renames State.Compared;
    begin
       for Row of Selected loop
          Add_Regressions (Item, Compared (Row.Project_Id));
@@ -268,22 +267,29 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Waivers: the review-waiver findings of the selected current assessments.
    procedure Fill_Waivers (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
       Counts : Repository.Indicator_Counts := [others => 0];
       Owners : Repository.Indicator_Counts := [others => 0];
 
       --  Add the waivers of one project's current assessment.
       procedure Add_Project (Row : Project_Summary) is
          Seen : Repository.Indicator_Counts := [others => 0];
+
+         --  Only the waiver findings become report rows.
+         procedure Collect (Value : Ada_Quality.Reporting.Assessment_Record) is
+         begin
+            for Result of Value.Results loop
+               for Finding of Result.Findings loop
+                  if To_String (Finding.Rule) = Waiver_Rule then
+                     Item.Waivers.Append (Summary_Of (Row.Project_Id, Row.Current_Run_Id, Finding));
+                     Seen (Finding.Indicator) := Seen (Finding.Indicator) + 1;
+                  end if;
+               end loop;
+            end loop;
+         end Collect;
       begin
-         for Finding of Aggregation.Findings_Of (Row.Project_Id, Repository.Assessment (Data, Row.Current_Run_Id))
-         loop
-            if Is_Waiver (Finding) then
-               Item.Waivers.Append (Finding);
-               Seen (Finding.Indicator) := Seen (Finding.Indicator) + 1;
-            end if;
-         end loop;
+         Repository.Visit_Assessment (Data, Row.Current_Run_Id, Collect'Access);
          for Id in Indicator_Id loop
             Counts (Id) := Counts (Id) + Seen (Id);
             Owners (Id) := Owners (Id) + Natural'Min (1, Seen (Id));
@@ -312,7 +318,7 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Compare: the regressions between the two chosen assessments, already classified by Select_Projects.
    procedure Fill_Compare (Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
+      Item     : Report renames State.Item;
    begin
       for Change of Item.Regressions loop
          Item.By_Kind (Change.Kind) := Item.By_Kind (Change.Kind) + 1;
@@ -326,21 +332,14 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  Trends: numeric series, undated runs, and daily snapshots.
    procedure Fill_Trends (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Selected : Project_Vectors.Vector renames State.Selected;
+      Item     : Report renames State.Item;
+      Selected : Project_Vectors.Vector renames State.Selected;
    begin
-      for Id in Indicator_Id loop
-         if Ada_Quality.Indicators.Measurement_Unit (Id) /= "none" then
-            declare
-               Series : Trend_Summary :=
-                 Trends.Metric_Series (Data, Selected, Id, Invocation.Since, Invocation.Until_Date);
-            begin
-               Filtering.Sort_Points (Series.Points, Invocation.Sort, Invocation.Reverse_Order);
-               Points_Limit.Limit (Series.Points, Invocation.Limit);
-               Item.Excluded_Observations := Item.Excluded_Observations + Series.Excluded_Observations;
-               Item.Series.Append (Series);
-            end;
-         end if;
+      Item.Series := Trends.Metric_Series (Data, Selected, Invocation.Since, Invocation.Until_Date);
+      for Series of Item.Series loop
+         Filtering.Sort_Points (Series.Points, Invocation.Sort, Invocation.Reverse_Order);
+         Points_Limit.Limit (Series.Points, Invocation.Limit);
+         Item.Excluded_Observations := Item.Excluded_Observations + Series.Excluded_Observations;
       end loop;
       Item.Undated := Trends.Undated_Runs (Data, Selected, Invocation.Since, Invocation.Until_Date);
       Item.Daily := Trends.Daily_States (Data, Selected, Invocation.Since, Invocation.Until_Date);
@@ -348,7 +347,7 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  History: a project's runs and their lifecycle counts.
    procedure Fill_History (Data : Repository.Snapshot; Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
+      Item     : Report renames State.Item;
    begin
       Item.History :=
         Trends.History (Data, Item.Project.Project_Id, Invocation.Since, Invocation.Until_Date, Item.Undated);
@@ -367,8 +366,8 @@ package body Ada_Quality_Summary.Reports.Assembly is
 
    --  How often each --fail-on condition holds in the report.
    procedure Count_Gate (Invocation : Options.Options; State : in out Context) is
-   Item     : Report renames State.Item;
-   Compared : Comparison_Maps.Map renames State.Compared;
+      Item     : Report renames State.Item;
+      Compared : Comparison_Maps.Map renames State.Compared;
    begin
       if Invocation.Command = Compare_Command then
          declare

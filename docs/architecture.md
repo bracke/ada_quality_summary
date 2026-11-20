@@ -32,9 +32,14 @@ main ─▶ CLI.Execute
 ```
 
 A snapshot is loaded once per invocation and never holds a database handle, cursor, or lock after `Load` returns.
-`Repository.Facts` derives each completed assessment's per-indicator states, totals, measurement kinds, and finding
-counts on first use and memoizes them in the snapshot, so overviews, trends, histories, and daily snapshots decode
-each assessment at most once.
+`Repository.Load` indexes only projects and runs. Everything a report derives from the snapshot is built on first use
+and kept in it: decoded current assessments, each completed assessment's per-indicator states, totals, measurement
+kinds, and finding counts (`Repository.Facts`), each project's history, and each project's measurement rows grouped by
+indicator. A report about one project therefore pays for that project only, overviews, trends, histories, and daily
+snapshots decode each assessment at most once, and every trend series reads only its own indicator's rows. Decoded
+assessments are handed to callers by reference (`Repository.Visit_Assessment`), and sorting moves row positions,
+copying each row once. Corrupt evidence fails the report that reads it with exit code 4; a report that never reads a
+corrupt assessment, such as the history of another project, is not affected by it.
 Report data is computed completely before rendering, and rendering completes before the first byte is written, so a
 computation error never leaves partial JSON on standard output.
 

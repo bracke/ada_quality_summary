@@ -134,7 +134,14 @@ package body Ada_Quality_Summary.Aggregation is
    begin
       for Project of Projects loop
          if Project.Current_Run_Id /= 0 then
-            Result.Append (Findings_Of (Project.Project_Id, Repository.Assessment (Data, Project.Current_Run_Id)));
+            declare
+               procedure Collect (Value : Ada_Quality.Reporting.Assessment_Record) is
+               begin
+                  Result.Append (Findings_Of (Project.Project_Id, Value));
+               end Collect;
+            begin
+               Repository.Visit_Assessment (Data, Project.Current_Run_Id, Collect'Access);
+            end;
          end if;
       end loop;
       return Result;

@@ -1,3 +1,4 @@
+with Ada_Quality.Types;
 with Ada.Calendar;
 with Ada.Containers.Ordered_Sets;
 with Ada.Containers.Vectors;
@@ -38,19 +39,6 @@ package body Ada_Quality_Summary.Trends is
       end loop;
       raise Data_Error with "assessment" & Positive'Image (Run.Run_Id) & " is absent from its project history";
    end Item_Of;
-
-   function Completed_Only (Items : Ada_Quality.Storage.History_Vectors.Vector)
-      return Ada_Quality.Storage.History_Vectors.Vector
-   is
-      Result : Ada_Quality.Storage.History_Vectors.Vector;
-   begin
-      for Item of Items loop
-         if To_String (Item.Status) = "completed" then
-            Result.Append (Item);
-         end if;
-      end loop;
-      return Result;
-   end Completed_Only;
 
    procedure Regressions
      (Data       : Repository.Snapshot;
@@ -196,57 +184,66 @@ package body Ada_Quality_Summary.Trends is
    function Metric_Series
      (Data       : Repository.Snapshot;
       Projects   : Project_Vectors.Vector;
-      Indicator  : Indicator_Id;
-      Since, Until_Date : Date_Bound) return Trend_Summary
+      Since, Until_Date : Date_Bound) return Trend_Summary_Vectors.Vector
    is
-      Unit   : constant String := Ada_Quality.Indicators.Measurement_Unit (Indicator);
-      --  Ada_Quality.Types defines Decimal_Value as the fixed basis-point kind; every other numeric unit is an
-      --  integer count.
-      Result : Trend_Summary :=
-        (Indicator => Indicator, Kind => (if Unit = "basis_points" then Decimal_Value else Integer_Value),
-         Unit => To_Unbounded_String (Unit), others => <>);
+      Result : Trend_Summary_Vectors.Vector;
+
+      --  The empty series of a numeric indicator. Ada_Quality.Types defines Decimal_Value as the fixed basis-point
+      --  kind; every other numeric unit is an integer count.
+      function Empty_Series (Indicator : Indicator_Id) return Trend_Summary is
+        (Indicator => Indicator,
+         Kind      => (if Ada_Quality.Indicators.Measurement_Unit (Indicator) = "basis_points" then Decimal_Value
+                       else Integer_Value),
+         Unit      => To_Unbounded_String (Ada_Quality.Indicators.Measurement_Unit (Indicator)),
+         others    => <>);
+
+      --  Add one project's points to Series; Eligible counts the project's completed runs inside the date range.
+      procedure Add_Project (Series : in out Trend_Summary; Project_Id : Positive; Eligible : Natural) is
+         Included : Natural := 0;
+      begin
+         --  Ada_Quality.History.Metric_Trend anchors the series on the latest completed run's measurement semantics,
+         --  so the reference is the current assessment.
+         for Point of Repository.Metric_Trend (Data, Project_Id, Series.Indicator) loop
+            declare
+               Observed : constant Ada_Quality.Reporting.Optional_Timestamp :=
+                 Repository.Run (Data, Point.Run_Id).Finished_At;
+            begin
+               --  Never combine measurement representations within one series.
+               if In_Range (Observed, Since, Until_Date) and then
+                 Repository.Facts (Data, Point.Run_Id).Kinds (Series.Indicator) = Series.Kind
+               then
+                  Series.Points.Append
+                    (Trend_Point'(Project_Id => Project_Id, Run_Id => Point.Run_Id, Value => Point.Value,
+                                  Observed => Observed));
+                  Included := Included + 1;
+               end if;
+            end;
+         end loop;
+         if Included = 0 then
+            Series.Projects_Excluded := Series.Projects_Excluded + 1;
+         else
+            Series.Projects_Included := Series.Projects_Included + 1;
+         end if;
+         Series.Excluded_Observations := Series.Excluded_Observations + (Eligible - Included);
+      end Add_Project;
    begin
+      for Id in Indicator_Id loop
+         if Ada_Quality.Indicators.Measurement_Unit (Id) /= "none" then
+            Result.Append (Empty_Series (Id));
+         end if;
+      end loop;
       for Project of Projects loop
          declare
-            Completed : constant Ada_Quality.Storage.History_Vectors.Vector :=
-              Completed_Only (Repository.History_Items (Data, Project.Project_Id));
-            Points    : Ada_Quality.History.Trend_Vectors.Vector;
-            Included  : Natural := 0;
-            Eligible  : Natural := 0;
+            Eligible : Natural := 0;
          begin
-            --  Ada_Quality.History.Metric_Trend anchors the series on the latest completed run's measurement
-            --  semantics. Passing only completed runs keeps that reference the current assessment.
-            if not Completed.Is_Empty then
-               Points := Ada_Quality.History.Metric_Trend
-                 (Completed, Repository.Measurements (Data, Project.Project_Id), Indicator);
-            end if;
-            for Item of Completed loop
-               if In_Range (Repository.Run (Data, Item.Id).Finished_At, Since, Until_Date) then
+            for Run of Repository.Runs (Data, Project.Project_Id) loop
+               if Run.State = Assessment_Completed and then In_Range (Run.Finished_At, Since, Until_Date) then
                   Eligible := Eligible + 1;
                end if;
             end loop;
-            for Point of Points loop
-               declare
-                  Observed : constant Ada_Quality.Reporting.Optional_Timestamp :=
-                    Repository.Run (Data, Point.Run_Id).Finished_At;
-               begin
-                  --  Never combine measurement representations within one series.
-                  if In_Range (Observed, Since, Until_Date) and then
-                    Repository.Facts (Data, Point.Run_Id).Kinds (Indicator) = Result.Kind
-                  then
-                     Result.Points.Append
-                       (Trend_Point'(Project_Id => Project.Project_Id, Run_Id => Point.Run_Id, Value => Point.Value,
-                         Observed => Observed));
-                     Included := Included + 1;
-                  end if;
-               end;
+            for Series of Result loop
+               Add_Project (Series, Project.Project_Id, Eligible);
             end loop;
-            if Included = 0 then
-               Result.Projects_Excluded := Result.Projects_Excluded + 1;
-            else
-               Result.Projects_Included := Result.Projects_Included + 1;
-            end if;
-            Result.Excluded_Observations := Result.Excluded_Observations + (Eligible - Included);
          end;
       end loop;
       return Result;

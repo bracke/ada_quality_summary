@@ -1,4 +1,3 @@
-with Ada_Quality.Types;
 with Ada_Quality_Summary.Model;
 with Ada_Quality_Summary.Criteria;
 with Ada_Quality_Summary.Repository;
@@ -59,14 +58,14 @@ package Ada_Quality_Summary.Trends is
    function Metric_Series
      (Data       : Ada_Quality_Summary.Repository.Snapshot;
       Projects   : Ada_Quality_Summary.Model.Project_Vectors.Vector;
-      Indicator  : Ada_Quality.Types.Indicator_Id;
-      Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound) return Ada_Quality_Summary.Model.Trend_Summary;
-   --  Build one numeric series from Ada_Quality.History.Metric_Trend, per project, against its current assessment.
-   --  The series kind is the indicator's measurement kind, also when no observation is included; observations of
-   --  another kind are excluded and counted.
+      Since, Until_Date : Ada_Quality_Summary.Criteria.Date_Bound)
+      return Ada_Quality_Summary.Model.Trend_Summary_Vectors.Vector;
+   --  Build one numeric series per indicator with a measurement unit, in registry order, from
+   --  Ada_Quality.History.Metric_Trend per project against its current assessment. Each project's runs and
+   --  measurement rows are read once for all series. A series' kind is the indicator's measurement kind, also when it
+   --  has no observation; observations of another kind are excluded and counted.
    --  @param Data Snapshot.
    --  @param Projects Selected projects.
-   --  @param Indicator Numeric indicator.
    --  @param Since First included UTC day.
    --  @param Until_Date Last included UTC day.
    --  @return Series.
