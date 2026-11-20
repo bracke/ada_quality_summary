@@ -116,7 +116,9 @@ package Ada_Quality_Summary.Repository is
    --  Pass a decoded completed assessment to Process without copying it; current assessments are decoded once.
    --  @param Data Snapshot.
    --  @param Run_Id Completed run identity.
-   --  @param Process Callback; it must not query Data for another assessment while it runs.
+   --  @param Process Callback. It must not query Data for another assessment while it runs: Process reads the
+   --  decoded assessment in place, and decoding another one would change the container holding it, which Ada stops
+   --  with Program_Error.
    --  @exception Data_Error Stored evidence is corrupt.
 
    function Result_Of
